@@ -231,13 +231,25 @@ const generatedPlSql = computed(() => {
 
   ;(selectedItem.value.in_param || []).forEach(p => {
     const val = inputParams.value[p]
-    const valStr = val === undefined || val === '' ? `:${p}` : `'${val}'`
+    let valStr = `:${p}`
+    if (val !== undefined && val !== '') {
+      const lower = p.toLowerCase()
+      if (lower.includes('periodo') || lower.includes('fecha')) {
+        valStr = `TO_DATE('${val}', 'YYYY-MM-DD')`
+      } else if (!isNaN(Number(val)) && typeof val === 'string' && /^-?\d+(\.\d+)?$/.test(val.trim())) {
+        valStr = val.trim()
+      } else {
+        valStr = `'${val}'`
+      }
+    }
     parts.push(`  ${p} => ${valStr}`)
   })
 
-  ;(selectedItem.value.out_param || []).forEach(p => {
-    parts.push(`  ${p} => :${p} /* OUT */`)
-  })
+  if (selectedItem.value.out_param && Array.isArray(selectedItem.value.out_param) && selectedItem.value.out_param.length > 0) {
+    selectedItem.value.out_param.forEach(p => {
+      parts.push(`  ${p} => :${p} /* OUT */`)
+    })
+  }
 
   if (currentType.value === 'fn') {
     return `DECLARE\n  v_ret NUMBER;\nBEGIN\n  v_ret := ${name}(\n${parts.join(',\n')}\n  );\nEND;`
@@ -256,8 +268,22 @@ async function runProcedure() {
     ? `/api/sp/${selectedItemName.value}` 
     : `/api/fn/${selectedItemName.value}`
 
+  const payload = {}
+  for (const [k, v] of Object.entries(inputParams.value)) {
+    if (v === '' || v === undefined) continue
+    const trimmed = typeof v === 'string' ? v.trim() : v
+    const lower = k.toLowerCase()
+    
+    // Coerción automática de enteros para IDs, tipos, grupo, cuotas, ley
+    if ((lower.includes('id') || lower.includes('tipo') || lower.includes('grupo') || lower.includes('ley') || lower.includes('cuota') || lower.includes('cant')) && typeof trimmed === 'string' && /^-?\d+$/.test(trimmed)) {
+      payload[k] = Number(trimmed)
+    } else {
+      payload[k] = trimmed
+    }
+  }
+
   try {
-    const res = await api.post(endpoint, inputParams.value)
+    const res = await api.post(endpoint, payload)
     executionResult.value = res.data
     lastDuration.value = res.durationMs
   } catch (err) {
