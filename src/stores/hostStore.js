@@ -1,5 +1,5 @@
 import { defineStore } from 'pinia'
-import { HOSTS, DEFAULT_BRIDGE_URL, DEFAULT_ADMIN_KEY } from '@/config/hosts'
+import { HOSTS, DEFAULT_BRIDGE_URL } from '@/config/hosts'
 
 export const useHostStore = defineStore('host', {
   state: () => ({
@@ -8,7 +8,7 @@ export const useHostStore = defineStore('host', {
     customProjectKey: localStorage.getItem('liq_custom_key') || '',
     customPort: localStorage.getItem('liq_custom_port') || '3005',
     bridgeUrl: localStorage.getItem('liq_bridge_url') || DEFAULT_BRIDGE_URL,
-    adminKey: localStorage.getItem('liq_admin_key') || DEFAULT_ADMIN_KEY,
+    adminKey: sessionStorage.getItem('liq_admin_key') || localStorage.getItem('liq_admin_key') || '',
     dbStatus: {
       connected: null,
       message: 'Sin verificar',
@@ -18,6 +18,8 @@ export const useHostStore = defineStore('host', {
   }),
 
   getters: {
+    isAuthenticated: (state) => !!state.adminKey,
+
     activeHost(state) {
       if (state.activeHostId === 'custom') {
         return {
@@ -35,12 +37,15 @@ export const useHostStore = defineStore('host', {
 
     requestHeaders(state) {
       const host = this.activeHost
-      return {
+      const headers = {
         'Content-Type': 'application/json',
         'x-project-key': host.projectKey,
-        'x-project-port': String(host.projectPort),
-        'X-Admin-Key': state.adminKey
+        'x-project-port': String(host.projectPort)
       }
+      if (state.adminKey) {
+        headers['X-Admin-Key'] = state.adminKey
+      }
+      return headers
     }
   },
 
@@ -48,9 +53,55 @@ export const useHostStore = defineStore('host', {
     setHost(hostId) {
       this.activeHostId = hostId
       localStorage.setItem('liq_active_host', hostId)
-      // Actualizar variable CSS de color primario en runtime
       document.documentElement.style.setProperty('--color-primary', this.activeHost.color)
+      if (this.isAuthenticated) {
+        this.checkDbHealth()
+      }
+    },
+
+    async verifyAndLogin(key, remember = false) {
+      const cleanKey = String(key || '').trim()
+      if (!cleanKey) {
+        throw new Error('La clave de acceso es requerida.')
+      }
+
+      const host = this.activeHost
+      const url = `${this.bridgeUrl}/api/admin/verify`
+
+      const res = await fetch(url, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-project-key': host.projectKey,
+          'x-project-port': String(host.projectPort),
+          'X-Admin-Key': cleanKey
+        },
+        body: JSON.stringify({ adminKey: cleanKey })
+      })
+
+      if (!res.ok) {
+        throw new Error('Clave de acceso incorrecta o no autorizada.')
+      }
+
+      this.adminKey = cleanKey
+      if (remember) {
+        localStorage.setItem('liq_admin_key', cleanKey)
+        sessionStorage.removeItem('liq_admin_key')
+      } else {
+        sessionStorage.setItem('liq_admin_key', cleanKey)
+        localStorage.removeItem('liq_admin_key')
+      }
+
       this.checkDbHealth()
+      return true
+    },
+
+    logout() {
+      this.adminKey = ''
+      localStorage.removeItem('liq_admin_key')
+      sessionStorage.removeItem('liq_admin_key')
+      this.dbStatus.connected = null
+      this.dbStatus.message = 'Sesión cerrada'
     },
 
     setAdminKey(key) {
@@ -71,6 +122,7 @@ export const useHostStore = defineStore('host', {
     },
 
     async checkDbHealth() {
+      if (!this.isAuthenticated) return
       this.dbStatus.loading = true
       try {
         const res = await fetch(`${this.bridgeUrl}/api/admin/health?testDb=true`, {

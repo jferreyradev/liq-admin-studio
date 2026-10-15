@@ -30,6 +30,12 @@ export const api = {
     const data = isJson ? await res.json() : await res.text()
 
     if (!res.ok) {
+      if (res.status === 401 || res.status === 403) {
+        hostStore.logout()
+        if (typeof window !== 'undefined' && !window.location.pathname.includes('/login')) {
+          window.location.href = '/login'
+        }
+      }
       const err = new Error(data?.error || `HTTP ${res.status}: ${res.statusText}`)
       err.status = res.status
       err.data = data
@@ -60,6 +66,12 @@ export const api = {
     const data = isJson ? await res.json() : await res.text()
 
     if (!res.ok) {
+      if (res.status === 401 || res.status === 403) {
+        hostStore.logout()
+        if (typeof window !== 'undefined' && !window.location.pathname.includes('/login')) {
+          window.location.href = '/login'
+        }
+      }
       const err = new Error(data?.error || `HTTP ${res.status}: ${res.statusText}`)
       err.status = res.status
       err.data = data
@@ -89,6 +101,12 @@ export const api = {
     const data = isJson ? await res.json() : await res.text()
 
     if (!res.ok) {
+      if (res.status === 401 || res.status === 403) {
+        hostStore.logout()
+        if (typeof window !== 'undefined' && !window.location.pathname.includes('/login')) {
+          window.location.href = '/login'
+        }
+      }
       const err = new Error(data?.error || `HTTP ${res.status}: ${res.statusText}`)
       err.status = res.status
       err.data = data

@@ -1,5 +1,4 @@
 export const DEFAULT_BRIDGE_URL = 'https://dno-admin-bridge.jferreyradev.deno.net'
-export const DEFAULT_ADMIN_KEY = 'admin_liq_2026'
 
 export const HOSTS = [
   {

@@ -1,9 +1,9 @@
 <template>
   <div class="app-layout">
-    <AppHeader />
+    <AppHeader v-if="hostStore.isAuthenticated && route.name !== 'login'" />
     <div class="main-body">
-      <AppSidebar />
-      <main class="workspace-area">
+      <AppSidebar v-if="hostStore.isAuthenticated && route.name !== 'login'" />
+      <main class="workspace-area" :class="{ 'auth-mode': route.name === 'login' }">
         <router-view />
       </main>
     </div>
@@ -11,8 +11,13 @@
 </template>
 
 <script setup>
+import { useRoute } from 'vue-router'
+import { useHostStore } from '@/stores/hostStore'
 import AppHeader from '@/components/layout/AppHeader.vue'
 import AppSidebar from '@/components/layout/AppSidebar.vue'
+
+const route = useRoute()
+const hostStore = useHostStore()
 </script>
 
 <style scoped>
@@ -35,5 +40,10 @@ import AppSidebar from '@/components/layout/AppSidebar.vue'
   min-width: 0;
   overflow: hidden;
   background-color: var(--bg-app);
+}
+
+.workspace-area.auth-mode {
+  width: 100vw;
+  height: 100vh;
 }
 </style>

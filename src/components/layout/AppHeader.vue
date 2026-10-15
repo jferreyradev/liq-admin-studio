@@ -64,6 +64,11 @@
       <button class="header-btn" @click="showConfigModal = true" title="Configuración de Puente y Clave de Acceso">
         ⚙️ Config
       </button>
+
+      <!-- Botón Cerrar Sesión -->
+      <button class="header-btn btn-logout" @click="handleLogout" title="Cerrar sesión de administrador">
+        🔒 Salir
+      </button>
     </div>
 
     <!-- Modal de Configuración -->
@@ -118,9 +123,11 @@
 
 <script setup>
 import { ref, onMounted } from 'vue'
+import { useRouter } from 'vue-router'
 import { useHostStore } from '@/stores/hostStore'
 import { api } from '@/services/api'
 
+const router = useRouter()
 const hostStore = useHostStore()
 const isSyncing = ref(false)
 const isRefreshing = ref(false)
@@ -148,6 +155,13 @@ function saveConfig() {
   }
   showConfigModal.value = false
   hostStore.checkDbHealth()
+}
+
+function handleLogout() {
+  if (confirm('¿Cerrar sesión de administración?')) {
+    hostStore.logout()
+    router.replace('/login')
+  }
 }
 
 async function syncMapperViews() {
