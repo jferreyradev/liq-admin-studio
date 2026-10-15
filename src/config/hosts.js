@@ -2,6 +2,16 @@ export const DEFAULT_BRIDGE_URL = 'https://dno-admin-bridge.jferreyradev.deno.ne
 
 export const HOSTS = [
   {
+    id: 'local',
+    name: 'Servidor Local (api_liquid)',
+    shortName: 'Localhost',
+    projectKey: 'local',
+    projectPort: '3005',
+    color: '#10B981',
+    badgeText: 'Local :3005',
+    directUrl: 'http://localhost:3005'
+  },
+  {
     id: 'trancas',
     name: 'Municipalidad de Trancas',
     shortName: 'Trancas',

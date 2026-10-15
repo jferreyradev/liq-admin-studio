@@ -2,7 +2,8 @@ import { useHostStore } from '@/stores/hostStore'
 
 function buildUrl(path, queryParams = {}) {
   const hostStore = useHostStore()
-  const base = hostStore.bridgeUrl.replace(/\/+$/, '')
+  const activeHost = hostStore.activeHost
+  const base = (activeHost.directUrl || hostStore.bridgeUrl).replace(/\/+$/, '')
   const cleanPath = path.startsWith('/') ? path : `/${path}`
   
   const url = new URL(`${base}${cleanPath}`)
