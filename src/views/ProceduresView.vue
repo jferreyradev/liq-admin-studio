@@ -4,33 +4,43 @@
     <div class="catalog-sidebar">
       <div class="search-header">
         <div class="type-selector">
-          <button 
-            class="tab-btn" 
-            :class="{ active: currentType === 'sp' }" 
+          <button
+            class="tab-btn"
+            :class="{ active: currentType === 'sp' }"
             @click="switchType('sp')"
           >
             ⚡ Stored Procedures ({{ spList.length }})
           </button>
-          <button 
-            class="tab-btn" 
-            :class="{ active: currentType === 'fn' }" 
+          <button
+            class="tab-btn"
+            :class="{ active: currentType === 'fn' }"
             @click="switchType('fn')"
           >
             ƒ(x) Funciones ({{ fnList.length }})
           </button>
         </div>
 
-        <input 
-          type="text" 
-          class="form-control" 
-          placeholder="Buscar procedimiento..." 
-          v-model="searchTerm"
-        />
+        <div class="search-input-row">
+          <input
+            type="text"
+            class="form-control"
+            placeholder="Buscar procedimiento o paquete..."
+            v-model="searchTerm"
+          />
+          <button
+            class="btn btn-sm"
+            @click="reloadProcedures"
+            :disabled="catalogStore.loadingProcedures"
+            title="Recargar catálogo de SPs y Funciones"
+          >
+            {{ catalogStore.loadingProcedures ? '...' : '🔄' }}
+          </button>
+        </div>
       </div>
 
       <div class="item-list">
-        <div 
-          v-for="item in filteredItems" 
+        <div
+          v-for="item in filteredItems"
           :key="item.name"
           class="catalog-item"
           :class="{ active: selectedItemName === item.name }"
@@ -46,7 +56,7 @@
     <div class="proc-workspace">
       <div v-if="!selectedItem" class="empty-selection card">
         <h3>👈 Selecciona un procedimiento o función</h3>
-        <p>Completa sus parámetros de entrada y pruébalo con inspección de binds en vivo.</p>
+        <p>Completa sus parámetros de entrada y pruébalo con inspección de llamada PL/SQL y binds en vivo.</p>
       </div>
 
       <div v-else class="proc-content">
@@ -54,52 +64,69 @@
         <div class="card">
           <div class="card-header">
             <div>
-              <div style="display: flex; align-items: center; gap: 8px;">
+              <div style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap;">
                 <span class="badge" :class="currentType === 'sp' ? 'badge-info' : 'badge-warning'">
                   {{ currentType.toUpperCase() }}
                 </span>
                 <h2 class="card-title">{{ selectedItemName }}</h2>
               </div>
-              <p class="text-secondary" style="margin-top: 4px;">
-                Oracle PL/SQL: <code>{{ selectedItem.sp_name || selectedItem.fn_name }}</code>
+              <p class="text-secondary" style="margin-top: 4px; font-size: 0.8rem;">
+                Oracle Target: <code>{{ selectedItem.sp_name || selectedItem.fn_name }}</code>
               </p>
             </div>
-            <div>
+            <div style="display: flex; gap: 8px;">
+              <button class="btn btn-sm" @click="inputParams = {}" :disabled="executing">🧹 Limpiar</button>
               <button class="btn btn-primary" :disabled="executing" @click="runProcedure">
-                {{ executing ? '⏳ Ejecutando...' : '⚡ Ejecutar en Oracle' }}
+                {{ executing ? `⏳ Ejecutando (${elapsedSeconds}s)...` : '▶ Ejecutar en Oracle' }}
               </button>
+            </div>
+          </div>
+
+          <!-- Barra de Endpoint y Acciones -->
+          <div class="endpoint-bar">
+            <span class="badge badge-info">POST</span>
+            <code class="endpoint-url">{{ currentEndpoint }}</code>
+            <div style="display: flex; gap: 6px;">
+              <button class="btn btn-sm" @click="copyCurl" title="Copiar comando cURL">📋 Copiar cURL</button>
+              <button class="btn btn-sm" @click="openInExplorer" title="Abrir en API Explorer">🚀 Probar en Explorer</button>
             </div>
           </div>
 
           <!-- Live PL/SQL Preview Card -->
           <div class="plsql-card">
-            <div class="plsql-header">
-              <span>📜 Bloque PL/SQL Generado en Tiempo Real</span>
-              <div style="display: flex; gap: 6px;">
-                <button class="btn btn-sm" @click="copyPlSql">📋 Copiar PL/SQL</button>
-                <button class="btn btn-sm" @click="openInSqlStudio">✏️ Abrir en SQL Studio</button>
+            <div class="plsql-header" @click="plsqlCollapsed = !plsqlCollapsed">
+              <div style="display: flex; align-items: center; gap: 8px;">
+                <span>{{ plsqlCollapsed ? '▶' : '▼' }}</span>
+                <span>📜 Cuerpo de la Llamada PL/SQL (Oracle)</span>
+                <span class="plsql-meta-badge">
+                  {{ (selectedItem.in_param || []).length }} IN | {{ (selectedItem.out_param || []).length }} OUT
+                </span>
+              </div>
+              <div style="display: flex; gap: 6px;" @click.stop>
+                <button class="btn btn-sm btn-dark" @click="copyPlSql">📋 Copiar PL/SQL</button>
               </div>
             </div>
-            <pre class="plsql-code">{{ generatedPlSql }}</pre>
+            <pre v-if="!plsqlCollapsed" class="plsql-code">{{ generatedPlSql }}</pre>
           </div>
 
           <!-- Formulario de Parámetros de Entrada -->
           <div class="params-section">
             <div class="section-title">📥 Parámetros de Entrada (IN):</div>
             <div v-if="!selectedItem.in_param || selectedItem.in_param.length === 0" class="no-params">
-              Este procedimiento no requiere parámetros de entrada.
+              Este procedimiento no requiere parámetros de entrada (IN).
             </div>
             <div v-else class="form-grid">
-              <div 
-                v-for="param in selectedItem.in_param" 
+              <div
+                v-for="param in selectedItem.in_param"
                 :key="param"
                 class="form-group"
               >
                 <label class="form-label">{{ param }}:</label>
-                <input 
-                  type="text" 
-                  class="form-control" 
-                  v-model="inputParams[param]" 
+                <input
+                  type="text"
+                  class="form-control"
+                  v-model="inputParams[param]"
+                  :disabled="executing"
                   :placeholder="`Valor para ${param}`"
                   @keyup.enter="runProcedure"
                 />
@@ -108,108 +135,163 @@
           </div>
         </div>
 
-        <!-- Resultados de la Ejecución -->
-        <div v-if="lastError" class="card error-box">
-          <div class="error-title">❌ Error de Ejecución en Oracle:</div>
-          <div class="error-msg">{{ lastError.message }}</div>
-          
-          <div v-if="lastError.data?.call" class="error-detail">
-            <span class="detail-label">Llamada Fallida:</span>
-            <pre>{{ lastError.data.call }}</pre>
-          </div>
-          <div v-if="lastError.data?.params" class="error-detail">
-            <span class="detail-label">Binds Enviados:</span>
-            <pre>{{ JSON.stringify(lastError.data.params, null, 2) }}</pre>
+        <!-- Estado de Ejecución Activo con Cronómetro -->
+        <div v-if="executing" class="card loading-card">
+          <div class="loading-spinner">⏳</div>
+          <div class="loading-title">Ejecutando Stored Procedure en Oracle...</div>
+          <div class="loading-timer">Tiempo transcurrido: {{ elapsedSeconds }}s</div>
+          <div class="loading-sub">
+            Por favor aguarde, la conexión a la base de datos se mantiene abierta hasta finalizar el procedimiento.
           </div>
         </div>
 
+        <!-- Error de Ejecución -->
+        <div v-if="lastError" class="card error-box">
+          <div class="error-title">❌ Error de Ejecución en Oracle ({{ lastError.status || 'Fallo' }}):</div>
+          <div class="error-msg">{{ lastError.message }}</div>
+
+          <div v-if="isPls306Error" class="pls-diag">
+            💡 <strong>Diagnóstico PLS-00306:</strong> Error en número o tipos de argumentos en la llamada a
+            <code>{{ selectedItem.sp_name || selectedItemName }}</code>. Verifique que todos los parámetros requeridos tengan el tipo esperado.
+          </div>
+
+          <div class="error-detail">
+            <span class="detail-label">Bloque PL/SQL Invocado:</span>
+            <pre>{{ lastError.data?.call || generatedPlSql }}</pre>
+          </div>
+          <div class="error-detail" v-if="Object.keys(coercedPayload).length > 0">
+            <span class="detail-label">Parámetros / Binds Enviados:</span>
+            <pre>{{ JSON.stringify(lastError.data?.params || coercedPayload, null, 2) }}</pre>
+          </div>
+        </div>
+
+        <!-- Resultados de la Ejecución -->
         <div v-if="executionResult" class="card">
           <div class="card-header">
             <div style="display: flex; align-items: center; gap: 10px;">
-              <h3 class="card-title">✅ Ejecución Exitosa</h3>
+              <h3 class="card-title">✅ Retorno del Procedimiento</h3>
               <span class="badge badge-success">{{ lastDuration }} ms</span>
             </div>
-            <button class="btn btn-sm" @click="copyResultJson">📋 Copiar Salida</button>
+            <button class="btn btn-sm" @click="copyResultJson">📋 Copiar Salida JSON</button>
           </div>
 
           <!-- Parámetros OUT -->
-          <div v-if="executionResult.out" style="margin-bottom: 12px;">
+          <div v-if="executionResult.out" style="margin-bottom: 14px;">
             <div class="section-title">📤 Parámetros de Salida (OUT Binds):</div>
             <pre>{{ JSON.stringify(executionResult.out, null, 2) }}</pre>
           </div>
 
           <!-- Respuesta completa -->
           <div>
-            <div class="section-title">Respuesta Completa de la API:</div>
+            <div class="section-title">Respuesta JSON Completa:</div>
             <pre>{{ JSON.stringify(executionResult, null, 2) }}</pre>
           </div>
         </div>
+
+        <!-- Si el SP devuelve filas tabulares (cursor / rows) -->
+        <ResultsTable
+          v-if="tabularRows.length > 0"
+          :rows="tabularRows"
+          :duration-ms="lastDuration"
+          title="Registros Devueltos por el Procedimiento"
+        />
       </div>
     </div>
   </div>
 </template>
 
 <script setup>
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed, watch, onMounted, onUnmounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { api } from '@/services/api'
 import { useHostStore } from '@/stores/hostStore'
+import { useCatalogStore } from '@/stores/catalogStore'
+import ResultsTable from '@/components/common/ResultsTable.vue'
 
 const router = useRouter()
 const hostStore = useHostStore()
+const catalogStore = useCatalogStore()
 
 const currentType = ref('sp')
-const spMap = ref({})
-const fnMap = ref({})
 const searchTerm = ref('')
 const selectedItemName = ref('')
-const selectedItem = ref(null)
 const inputParams = ref({})
+const plsqlCollapsed = ref(false)
 
 const executing = ref(false)
+const elapsedSeconds = ref(0)
+let timerInterval = null
+
 const executionResult = ref(null)
 const lastError = ref(null)
 const lastDuration = ref(0)
 
-onMounted(() => {
-  loadCatalogs()
+onMounted(async () => {
+  if (catalogStore.spCount === 0 && catalogStore.fnCount === 0) {
+    await catalogStore.loadProcedures()
+  }
+  if (spList.value.length > 0) {
+    selectItem(spList.value[0].name)
+  }
 })
 
-async function loadCatalogs() {
-  try {
-    const [spRes, fnRes] = await Promise.all([
-      api.get('/api/sp/list'),
-      api.get('/api/fn/list')
-    ])
-    spMap.value = spRes.data || {}
-    fnMap.value = fnRes.data || {}
+onUnmounted(() => {
+  if (timerInterval) clearInterval(timerInterval)
+})
 
-    if (spList.value.length > 0) {
-      selectItem(spList.value[0].name)
+watch(
+  () => [catalogStore.sp, catalogStore.fn],
+  () => {
+    if (!selectedItemName.value && currentList.value.length > 0) {
+      selectItem(currentList.value[0].name)
     }
-  } catch (err) {
-    console.error('Error cargando procedimientos:', err)
   }
+)
+
+async function reloadProcedures() {
+  await catalogStore.loadProcedures()
+  hostStore.showToast(
+    `Catálogo recargado: ${catalogStore.spCount} SPs y ${catalogStore.fnCount} Funciones`,
+    'info'
+  )
 }
 
-const spList = computed(() => Object.entries(spMap.value).map(([name, config]) => ({ name, config })))
-const fnList = computed(() => Object.entries(fnMap.value).map(([name, config]) => ({ name, config })))
+const spList = computed(() =>
+  Object.entries(catalogStore.sp || {}).map(([name, config]) => ({ name, config }))
+)
+const fnList = computed(() =>
+  Object.entries(catalogStore.fn || {}).map(([name, config]) => ({ name, config }))
+)
 
-const currentList = computed(() => currentType.value === 'sp' ? spList.value : fnList.value)
+const currentList = computed(() => (currentType.value === 'sp' ? spList.value : fnList.value))
 
 const filteredItems = computed(() => {
   if (!searchTerm.value.trim()) return currentList.value
   const t = searchTerm.value.toLowerCase().trim()
   return currentList.value.filter(item => {
-    return item.name.toLowerCase().includes(t) || 
+    return (
+      item.name.toLowerCase().includes(t) ||
       (item.config?.sp_name || item.config?.fn_name || '').toLowerCase().includes(t)
+    )
   })
+})
+
+const selectedItem = computed(() => {
+  if (!selectedItemName.value) return null
+  const map = currentType.value === 'sp' ? catalogStore.sp : catalogStore.fn
+  return map?.[selectedItemName.value] || null
+})
+
+const currentEndpoint = computed(() => {
+  if (!selectedItemName.value) return '/api/sp/...'
+  return currentType.value === 'sp'
+    ? `/api/sp/${selectedItemName.value}`
+    : `/api/fn/${selectedItemName.value}`
 })
 
 function switchType(type) {
   currentType.value = type
   selectedItemName.value = ''
-  selectedItem.value = null
   if (currentList.value.length > 0) {
     selectItem(currentList.value[0].name)
   }
@@ -217,12 +299,24 @@ function switchType(type) {
 
 function selectItem(name) {
   selectedItemName.value = name
-  const map = currentType.value === 'sp' ? spMap.value : fnMap.value
-  selectedItem.value = map[name] || null
   inputParams.value = {}
   executionResult.value = null
   lastError.value = null
 }
+
+const coercedPayload = computed(() => {
+  const payload = {}
+  for (const [k, v] of Object.entries(inputParams.value)) {
+    if (v === '' || v === undefined || v === null) continue
+    const trimmed = typeof v === 'string' ? v.trim() : v
+    if (typeof trimmed === 'string' && /^-?\d+(\.\d+)?$/.test(trimmed)) {
+      payload[k] = Number(trimmed)
+    } else {
+      payload[k] = trimmed
+    }
+  }
+  return payload
+})
 
 const generatedPlSql = computed(() => {
   if (!selectedItem.value) return ''
@@ -231,31 +325,48 @@ const generatedPlSql = computed(() => {
 
   ;(selectedItem.value.in_param || []).forEach(p => {
     const val = inputParams.value[p]
-    let valStr = `:${p}`
     if (val !== undefined && val !== '') {
-      const lower = p.toLowerCase()
-      if (lower.includes('periodo') || lower.includes('fecha')) {
-        valStr = `TO_DATE('${val}', 'YYYY-MM-DD')`
-      } else if (!isNaN(Number(val)) && typeof val === 'string' && /^-?\d+(\.\d+)?$/.test(val.trim())) {
-        valStr = val.trim()
-      } else {
-        valStr = `'${val}'`
-      }
+      parts.push(`  :${p} /* ${JSON.stringify(coercedPayload.value[p] ?? val)} */`)
+    } else {
+      parts.push(`  :${p}`)
     }
-    parts.push(`  ${p} => ${valStr}`)
   })
 
-  if (selectedItem.value.out_param && Array.isArray(selectedItem.value.out_param) && selectedItem.value.out_param.length > 0) {
+  if (Array.isArray(selectedItem.value.out_param) && selectedItem.value.out_param.length > 0) {
     selectedItem.value.out_param.forEach(p => {
-      parts.push(`  ${p} => :${p} /* OUT */`)
+      parts.push(`  :${p} /* OUT */`)
     })
   }
 
   if (currentType.value === 'fn') {
-    return `DECLARE\n  v_ret NUMBER;\nBEGIN\n  v_ret := ${name}(\n${parts.join(',\n')}\n  );\nEND;`
+    return `DECLARE\n  v_ret VARCHAR2(4000);\nBEGIN\n  v_ret := ${name}(\n${parts.join(',\n')}\n  );\nEND;`
+  }
+
+  if (parts.length === 0) {
+    return `BEGIN\n  ${name}();\nEND;`
   }
 
   return `BEGIN\n  ${name}(\n${parts.join(',\n')}\n  );\nEND;`
+})
+
+const isPls306Error = computed(() => {
+  const msg = String(lastError.value?.message || '')
+  const code = String(lastError.value?.data?.code || '')
+  return code === 'ORA-06550' || msg.includes('PLS-00306')
+})
+
+const tabularRows = computed(() => {
+  if (!executionResult.value) return []
+  if (Array.isArray(executionResult.value)) return executionResult.value
+  if (Array.isArray(executionResult.value.rows)) return executionResult.value.rows
+  if (executionResult.value.out && typeof executionResult.value.out === 'object') {
+    for (const val of Object.values(executionResult.value.out)) {
+      if (Array.isArray(val) && val.length > 0 && typeof val[0] === 'object') {
+        return val
+      }
+    }
+  }
+  return []
 })
 
 async function runProcedure() {
@@ -263,51 +374,61 @@ async function runProcedure() {
   executing.value = true
   lastError.value = null
   executionResult.value = null
+  elapsedSeconds.value = 0
 
-  const endpoint = currentType.value === 'sp' 
-    ? `/api/sp/${selectedItemName.value}` 
-    : `/api/fn/${selectedItemName.value}`
-
-  const payload = {}
-  for (const [k, v] of Object.entries(inputParams.value)) {
-    if (v === '' || v === undefined) continue
-    const trimmed = typeof v === 'string' ? v.trim() : v
-    const lower = k.toLowerCase()
-    
-    // Coerción automática de enteros para IDs, tipos, grupo, cuotas, ley
-    if ((lower.includes('id') || lower.includes('tipo') || lower.includes('grupo') || lower.includes('ley') || lower.includes('cuota') || lower.includes('cant')) && typeof trimmed === 'string' && /^-?\d+$/.test(trimmed)) {
-      payload[k] = Number(trimmed)
-    } else {
-      payload[k] = trimmed
-    }
-  }
+  if (timerInterval) clearInterval(timerInterval)
+  timerInterval = setInterval(() => {
+    elapsedSeconds.value++
+  }, 1000)
 
   try {
-    const res = await api.post(endpoint, payload)
+    const res = await api.post(currentEndpoint.value, coercedPayload.value)
     executionResult.value = res.data
     lastDuration.value = res.durationMs
+    hostStore.showToast(`Procedimiento "${selectedItemName.value}" ejecutado con éxito (${res.durationMs} ms)`, 'success')
   } catch (err) {
     lastError.value = err
+    hostStore.showToast(`Error al ejecutar: ${err.message}`, 'error')
   } finally {
+    if (timerInterval) {
+      clearInterval(timerInterval)
+      timerInterval = null
+    }
     executing.value = false
   }
 }
 
 function copyPlSql() {
   navigator.clipboard.writeText(generatedPlSql.value)
-  alert('Bloque PL/SQL copiado al portapapeles')
+  hostStore.showToast('Bloque PL/SQL copiado al portapapeles', 'success')
+}
+
+function copyCurl() {
+  const curl = api.buildCurl({
+    method: 'POST',
+    path: currentEndpoint.value,
+    body: coercedPayload.value
+  })
+  navigator.clipboard.writeText(curl)
+  hostStore.showToast('Comando cURL copiado al portapapeles', 'success')
 }
 
 function copyResultJson() {
   navigator.clipboard.writeText(JSON.stringify(executionResult.value, null, 2))
-  alert('Resultado copiado')
+  hostStore.showToast('Resultado JSON copiado al portapapeles', 'success')
 }
 
-function openInSqlStudio() {
+function openInExplorer() {
+  const templatePayload = {}
+  ;(selectedItem.value?.in_param || []).forEach(p => {
+    templatePayload[p] = coercedPayload.value[p] !== undefined ? coercedPayload.value[p] : ''
+  })
   router.push({
-    path: '/sql-studio',
+    path: '/explorer',
     query: {
-      sql: generatedPlSql.value
+      method: 'POST',
+      endpoint: currentEndpoint.value,
+      body: JSON.stringify(templatePayload, null, 2)
     }
   })
 }
@@ -335,6 +456,14 @@ function openInSqlStudio() {
   display: flex;
   flex-direction: column;
   gap: 8px;
+}
+
+.search-input-row {
+  display: flex;
+  gap: 6px;
+}
+.search-input-row input {
+  flex: 1;
 }
 
 .type-selector {
@@ -405,6 +534,24 @@ function openInSqlStudio() {
   gap: 18px;
 }
 
+.endpoint-bar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  background: #F8FAFC;
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-sm);
+  padding: 8px 12px;
+  margin-bottom: 14px;
+  flex-wrap: wrap;
+}
+.endpoint-url {
+  font-family: var(--font-mono);
+  font-size: 0.82rem;
+  color: var(--color-primary);
+  flex: 1;
+}
+
 .plsql-card {
   background: #0F172A;
   border: 1px solid #1E293B;
@@ -421,13 +568,26 @@ function openInSqlStudio() {
   color: #F8FAFC;
   font-size: 0.82rem;
   font-weight: 700;
+  cursor: pointer;
+}
+.plsql-meta-badge {
+  background: rgba(56, 189, 248, 0.15);
+  color: #38BDF8;
+  font-size: 0.7rem;
+  padding: 1px 8px;
+  border-radius: 9999px;
+}
+.btn-dark {
+  background: rgba(255, 255, 255, 0.1);
+  color: #F8FAFC;
+  border-color: rgba(255, 255, 255, 0.2);
 }
 .plsql-code {
   margin: 0;
   border: none;
   border-radius: 0;
   max-height: 220px;
-  color: #FBBF24;
+  color: #38BDF8;
 }
 
 .params-section {
@@ -450,6 +610,31 @@ function openInSqlStudio() {
   gap: 12px;
 }
 
+.loading-card {
+  text-align: center;
+  padding: 32px 20px;
+}
+.loading-spinner {
+  font-size: 2.2rem;
+  margin-bottom: 10px;
+}
+.loading-title {
+  font-size: 0.95rem;
+  font-weight: 700;
+  color: var(--text-primary);
+}
+.loading-timer {
+  font-size: 0.88rem;
+  font-weight: 700;
+  color: var(--color-primary);
+  margin-top: 6px;
+}
+.loading-sub {
+  font-size: 0.78rem;
+  color: var(--text-secondary);
+  margin-top: 4px;
+}
+
 .error-box {
   background: var(--color-error-bg);
   border: 1px solid #FECACA;
@@ -457,12 +642,25 @@ function openInSqlStudio() {
 }
 .error-title {
   font-weight: 700;
-  margin-bottom: 4px;
+  margin-bottom: 6px;
 }
 .error-msg {
   font-size: 0.85rem;
-  margin-bottom: 8px;
+  margin-bottom: 10px;
   white-space: pre-wrap;
+  font-family: var(--font-mono);
+}
+.pls-diag {
+  background: #FFFBEB;
+  border: 1px solid #FDE68A;
+  color: #92400E;
+  padding: 10px 12px;
+  border-radius: var(--radius-sm);
+  font-size: 0.8rem;
+  margin-bottom: 10px;
+}
+.error-detail {
+  margin-top: 8px;
 }
 .detail-label {
   font-size: 0.75rem;

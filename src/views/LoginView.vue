@@ -2,7 +2,7 @@
   <div class="login-wrapper">
     <div class="login-card card">
       <div class="login-header">
-        <div class="brand-badge" :style="{ backgroundColor: selectedHost.color }">
+        <div class="brand-badge" :style="{ backgroundColor: hostStore.activeHost.color }">
           ⚡ Liquid Studio
         </div>
         <h1 class="login-title">Acceso de Administrador</h1>
@@ -19,9 +19,9 @@
         <!-- Selector de Servidor Inicial -->
         <div class="form-group">
           <label class="form-label">Servidor / Municipio Destino:</label>
-          <select 
-            class="form-control" 
-            v-model="selectedHostId" 
+          <select
+            class="form-control"
+            v-model="selectedHostId"
             @change="hostStore.setHost(selectedHostId)"
           >
             <option v-for="h in hostStore.hosts" :key="h.id" :value="h.id">
@@ -31,23 +31,47 @@
           </select>
         </div>
 
+        <!-- Campos de Servidor Personalizado si aplica -->
+        <div v-if="selectedHostId === 'custom'" class="custom-host-box">
+          <div class="form-group">
+            <label class="form-label">URL Directa Opcional (ej. http://localhost:3005):</label>
+            <input
+              type="text"
+              class="form-control"
+              v-model="customDirectUrl"
+              placeholder="Vacío para usar Deno Bridge"
+              @input="syncCustomHost"
+            />
+          </div>
+          <div class="custom-row" v-if="!customDirectUrl.trim()">
+            <div class="form-group" style="flex: 2;">
+              <label class="form-label">x-project-key:</label>
+              <input type="text" class="form-control" v-model="customKey" placeholder="ServerTrancas" @input="syncCustomHost" />
+            </div>
+            <div class="form-group" style="flex: 1;">
+              <label class="form-label">Puerto:</label>
+              <input type="text" class="form-control" v-model="customPort" placeholder="3005" @input="syncCustomHost" />
+            </div>
+          </div>
+        </div>
+
         <!-- Clave de Acceso -->
         <div class="form-group" style="margin-top: 12px;">
           <label class="form-label">Clave de Administración (X-Admin-Key):</label>
           <div class="input-with-button">
-            <input 
-              :type="showPassword ? 'text' : 'password'" 
-              class="form-control" 
-              v-model="keyInput" 
+            <input
+              :type="showPassword ? 'text' : 'password'"
+              class="form-control"
+              v-model="keyInput"
               placeholder="Ingresa la clave de admin..."
               ref="keyField"
               required
               autofocus
             />
-            <button 
-              type="button" 
-              class="btn-toggle-eye" 
-              @click="showPassword = !showPassword" 
+            <button
+              type="button"
+              class="btn-toggle-eye"
+              @click="showPassword = !showPassword"
               tabindex="-1"
             >
               {{ showPassword ? '👁️' : '🔒' }}
@@ -64,9 +88,9 @@
         </div>
 
         <!-- Botón de Ingreso -->
-        <button 
-          type="submit" 
-          class="btn btn-primary btn-block" 
+        <button
+          type="submit"
+          class="btn btn-primary btn-block"
           :disabled="loading || !keyInput.trim()"
           style="margin-top: 18px;"
         >
@@ -76,18 +100,19 @@
       </form>
 
       <div class="login-footer">
-        <span>Pasarela: <code>{{ hostStore.bridgeUrl }}</code></span>
+        <span>Destino: <code>{{ hostStore.baseUrl }}</code></span>
       </div>
     </div>
   </div>
 </template>
 
 <script setup>
-import { ref, computed, onMounted } from 'vue'
-import { useRouter } from 'vue-router'
+import { ref, onMounted } from 'vue'
+import { useRouter, useRoute } from 'vue-router'
 import { useHostStore } from '@/stores/hostStore'
 
 const router = useRouter()
+const route = useRoute()
 const hostStore = useHostStore()
 
 const keyInput = ref('')
@@ -98,9 +123,13 @@ const errorMessage = ref(null)
 const selectedHostId = ref(hostStore.activeHostId)
 const keyField = ref(null)
 
-const selectedHost = computed(() => {
-  return hostStore.hosts.find(h => h.id === selectedHostId.value) || hostStore.hosts[0]
-})
+const customKey = ref(hostStore.customProjectKey)
+const customPort = ref(hostStore.customPort)
+const customDirectUrl = ref(hostStore.customDirectUrl)
+
+function syncCustomHost() {
+  hostStore.setCustomHost(customKey.value.trim(), customPort.value.trim(), customDirectUrl.value.trim())
+}
 
 onMounted(() => {
   if (hostStore.isAuthenticated) {
@@ -116,8 +145,11 @@ async function handleLogin() {
   errorMessage.value = null
 
   try {
+    syncCustomHost()
     await hostStore.verifyAndLogin(keyInput.value, rememberMe.value)
-    router.push('/views')
+    hostStore.showToast(`Bienvenido a ${hostStore.activeHost.name}`, 'success')
+    const redirectPath = route.query.redirect ? String(route.query.redirect) : '/views'
+    router.push(redirectPath)
   } catch (err) {
     errorMessage.value = err.message || 'Error de autenticación'
   } finally {
@@ -186,9 +218,27 @@ async function handleLogin() {
   margin-bottom: 16px;
 }
 
+.custom-host-box {
+  margin-top: 10px;
+  padding: 10px 12px;
+  background: #F8FAFC;
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-sm);
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.custom-row {
+  display: flex;
+  gap: 8px;
+}
+
 .input-with-button {
   display: flex;
   position: relative;
+}
+.input-with-button input {
+  width: 100%;
 }
 
 .btn-toggle-eye {
