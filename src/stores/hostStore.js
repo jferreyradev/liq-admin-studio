@@ -6,8 +6,12 @@ export const useHostStore = defineStore('host', {
     hosts: HOSTS,
     activeHostId: localStorage.getItem('liq_active_host') || 'trancas',
     customProjectKey: localStorage.getItem('liq_custom_key') || '',
-    customPort: localStorage.getItem('liq_custom_port') || '3005',
-    bridgeUrl: localStorage.getItem('liq_bridge_url') || DEFAULT_BRIDGE_URL,
+    bridgeUrl: (() => {
+      const saved = localStorage.getItem('liq_bridge_url')
+      if (saved && !saved.includes('dno-admin-bridge')) return saved
+      localStorage.setItem('liq_bridge_url', DEFAULT_BRIDGE_URL)
+      return DEFAULT_BRIDGE_URL
+    })(),
     adminKey: sessionStorage.getItem('liq_admin_key') || localStorage.getItem('liq_admin_key') || '',
     dbStatus: {
       connected: null,
