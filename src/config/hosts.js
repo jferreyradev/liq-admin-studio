@@ -1,4 +1,4 @@
-export const DEFAULT_BRIDGE_URL = 'https://deno-hono-proxy.jferreyradev.deno.net'
+export const DEFAULT_BRIDGE_URL = 'https://dno-admin-bridge.jferreyradev.deno.net'
 
 export const HOSTS = [
   {
