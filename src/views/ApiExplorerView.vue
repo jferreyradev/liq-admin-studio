@@ -99,7 +99,7 @@
             <button class="btn btn-sm" @click="addQuickParam('limit', '50')">+ limit</button>
             <button class="btn btn-sm" @click="addQuickParam('offset', '0')">+ offset</button>
             <button class="btn btn-sm" @click="addQuickParam('search', 'Campo:texto')">+ search</button>
-            <button class="btn btn-sm" @click="addQuickParam('sort', '{\"Campo\":\"asc\"}')">+ sort</button>
+            <button class="btn btn-sm" @click="addQuickParam('sort', '{&quot;Campo&quot;:&quot;asc&quot;}')">+ sort</button>
             <button class="btn btn-sm" style="margin-left: auto;" @click="addParam('', '', true)">+ Agregar Fila</button>
           </div>
 
