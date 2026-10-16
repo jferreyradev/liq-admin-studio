@@ -30,6 +30,13 @@
         <span class="nav-text">Importador Excel/CSV</span>
         <span v-if="catalogStore.tablesCount > 0" class="nav-count">{{ catalogStore.tablesCount }}</span>
       </router-link>
+
+      <div class="nav-divider"></div>
+
+      <router-link to="/help" class="nav-item" active-class="active">
+        <span class="nav-icon">📖</span>
+        <span class="nav-text">Manual de Uso y Ayuda</span>
+      </router-link>
     </nav>
 
     <div class="sidebar-footer">
@@ -68,6 +75,12 @@ const catalogStore = useCatalogStore()
   display: flex;
   flex-direction: column;
   gap: 4px;
+}
+
+.nav-divider {
+  height: 1px;
+  background: var(--border-color);
+  margin: 6px 8px;
 }
 
 .nav-item {

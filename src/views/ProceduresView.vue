@@ -99,7 +99,7 @@
                 <span>{{ plsqlCollapsed ? '▶' : '▼' }}</span>
                 <span>📜 Cuerpo de la Llamada PL/SQL (Oracle)</span>
                 <span class="plsql-meta-badge">
-                  {{ (selectedItem.in_param || []).length }} IN | {{ (selectedItem.out_param || []).length }} OUT
+                  {{ inParamList.length }} IN | {{ outParamList.length }} OUT
                 </span>
               </div>
               <div style="display: flex; gap: 6px;" @click.stop>
@@ -112,24 +112,31 @@
           <!-- Formulario de Parámetros de Entrada -->
           <div class="params-section">
             <div class="section-title">📥 Parámetros de Entrada (IN):</div>
-            <div v-if="!selectedItem.in_param || selectedItem.in_param.length === 0" class="no-params">
+            <div v-if="inParamList.length === 0" class="no-params">
               Este procedimiento no requiere parámetros de entrada (IN).
             </div>
             <div v-else class="form-grid">
               <div
-                v-for="param in selectedItem.in_param"
+                v-for="param in inParamList"
                 :key="param"
                 class="form-group"
               >
-                <label class="form-label">{{ param }}:</label>
+                <label class="form-label" style="display: flex; align-items: center; justify-content: space-between;">
+                  <span>{{ param }}:</span>
+                  <span v-if="isPeriodoParam(param)" class="badge badge-info" style="font-size: 0.65rem;" title="Regla de la API: Todo período utiliza siempre el día 01">📅 PERÍODO (Día 01)</span>
+                  <span v-else-if="isDateParam(param)" class="badge badge-info" style="font-size: 0.65rem;">📅 DATE</span>
+                </label>
                 <input
                   type="text"
                   class="form-control"
                   v-model="inputParams[param]"
                   :disabled="executing"
-                  :placeholder="`Valor para ${param}`"
+                  :placeholder="isPeriodoParam(param) ? 'Ej: 09/2026 o 01/09/2026 (Día siempre 01)' : (isDateParam(param) ? 'Ej: 01/09/2026 o 2026-09-01' : `Valor para ${param} (vacío = NULL)`)"
                   @keyup.enter="runProcedure"
                 />
+                <span v-if="isDateParam(param) && inputParams[param]" class="date-preview-hint">
+                  ➔ Se vinculará en Oracle como: <code>{{ formatPreviewBind(coercedPayload[param]) }}</code>
+                </span>
               </div>
             </div>
           </div>
@@ -168,11 +175,26 @@
         <!-- Resultados de la Ejecución -->
         <div v-if="executionResult" class="card">
           <div class="card-header">
-            <div style="display: flex; align-items: center; gap: 10px;">
-              <h3 class="card-title">✅ Retorno del Procedimiento</h3>
-              <span class="badge badge-success">{{ lastDuration }} ms</span>
+            <div style="display: flex; align-items: center; gap: 10px; flex-wrap: wrap;">
+              <h3 class="card-title">
+                {{ plsqlOutWarning ? '⚠️ Procedimiento Finalizado con Observaciones' : '✅ Retorno del Procedimiento' }}
+              </h3>
+              <span class="badge" :class="plsqlOutWarning ? 'badge-warning' : 'badge-success'">
+                HTTP 200 • {{ lastDuration }} ms
+              </span>
             </div>
             <button class="btn btn-sm" @click="copyResultJson">📋 Copiar Salida JSON</button>
+          </div>
+
+          <!-- Alerta si el SP reportó un error en sus variables OUT -->
+          <div v-if="plsqlOutWarning" class="pls-diag" style="margin-bottom: 14px;">
+            ⚠️ <strong>Atención en Parámetros OUT de PL/SQL:</strong> {{ plsqlOutWarning }}
+          </div>
+
+          <!-- Sentencia y Binds efectivamente ejecutados en el servidor -->
+          <div v-if="executionResult.call || executionResult.params" style="margin-bottom: 14px;">
+            <div class="section-title">🔍 Sentencia y Binds Ejecutados en el Servidor Oracle:</div>
+            <pre>{{ JSON.stringify({ call: executionResult.call, params: executionResult.params, elapsedSeconds: executionResult.elapsed }, null, 2) }}</pre>
           </div>
 
           <!-- Parámetros OUT -->
@@ -282,12 +304,127 @@ const selectedItem = computed(() => {
   return map?.[selectedItemName.value] || null
 })
 
+const inParamList = computed(() => {
+  const raw = selectedItem.value?.in_param
+  if (!raw) return []
+  if (Array.isArray(raw)) return raw
+  if (typeof raw === 'object') return Object.keys(raw)
+  return []
+})
+
+const outParamList = computed(() => {
+  const raw = selectedItem.value?.out_param
+  if (!raw) return []
+  if (Array.isArray(raw)) return raw
+  if (typeof raw === 'object' && raw.varName) return [raw.varName]
+  return []
+})
+
 const currentEndpoint = computed(() => {
   if (!selectedItemName.value) return '/api/sp/...'
   return currentType.value === 'sp'
     ? `/api/sp/${selectedItemName.value}`
     : `/api/fn/${selectedItemName.value}`
 })
+
+function isPeriodoParam(paramName) {
+  const lower = String(paramName || '').toLowerCase()
+  return lower.includes('periodo') || lower === 'vper' || lower === 'per'
+}
+
+function isDateParam(paramName) {
+  const lower = String(paramName || '').toLowerCase()
+  return (
+    isPeriodoParam(paramName) ||
+    lower.includes('fecha') ||
+    lower.includes('fec') ||
+    lower.includes('vto')
+  )
+}
+
+function coerceParamValue(rawVal, paramName) {
+  if (rawVal === undefined || rawVal === null) return null
+  const trimmed = typeof rawVal === 'string' ? rawVal.trim() : String(rawVal)
+  if (trimmed === '') return null
+
+  const isPeriodo = isPeriodoParam(paramName)
+  const isDate = isDateParam(paramName)
+
+  // 1. YYYY-MM-DD -> Medianoche en zona horaria local (si es Periodo, día siempre 01)
+  const isoDateOnly = trimmed.match(/^(\d{4})-(\d{1,2})-(\d{1,2})$/)
+  if (isoDateOnly) {
+    const day = isPeriodo ? 1 : parseInt(isoDateOnly[3], 10)
+    const d = new Date(
+      parseInt(isoDateOnly[1], 10),
+      parseInt(isoDateOnly[2], 10) - 1,
+      day,
+      0, 0, 0
+    )
+    if (!isNaN(d.getTime())) return d.toISOString()
+  }
+
+  // 2. DD/MM/YYYY o D/M/YYYY -> Medianoche local (si es Periodo, día siempre 01)
+  const dmyMatch = trimmed.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/)
+  if (dmyMatch) {
+    const day = isPeriodo ? 1 : parseInt(dmyMatch[1], 10)
+    const d = new Date(
+      parseInt(dmyMatch[3], 10),
+      parseInt(dmyMatch[2], 10) - 1,
+      day,
+      0, 0, 0
+    )
+    if (!isNaN(d.getTime())) return d.toISOString()
+  }
+
+  // 3. YYYY-MM -> Día 01 del mes a medianoche local
+  const ymMatch = trimmed.match(/^(\d{4})-(\d{1,2})$/)
+  if (isDate && ymMatch) {
+    const d = new Date(parseInt(ymMatch[1], 10), parseInt(ymMatch[2], 10) - 1, 1, 0, 0, 0)
+    if (!isNaN(d.getTime())) return d.toISOString()
+  }
+
+  // 4. MM/YYYY o M/YYYY -> Día 01 del mes a medianoche local
+  const myMatch = trimmed.match(/^(\d{1,2})\/(\d{4})$/)
+  if (isDate && myMatch) {
+    const d = new Date(parseInt(myMatch[2], 10), parseInt(myMatch[1], 10) - 1, 1, 0, 0, 0)
+    if (!isNaN(d.getTime())) return d.toISOString()
+  }
+
+  // 4b. Formato compacto YYYYMM (202609) o MMYYYY (092026) en campos Periodo -> Día 01 fijo
+  if (isPeriodo && /^\d{6}$/.test(trimmed)) {
+    const firstFour = parseInt(trimmed.slice(0, 4), 10)
+    const lastTwo = parseInt(trimmed.slice(4, 6), 10)
+    if (firstFour >= 1990 && firstFour <= 2100 && lastTwo >= 1 && lastTwo <= 12) {
+      return new Date(firstFour, lastTwo - 1, 1, 0, 0, 0).toISOString()
+    }
+    const firstTwo = parseInt(trimmed.slice(0, 2), 10)
+    const lastFour = parseInt(trimmed.slice(2, 6), 10)
+    if (lastFour >= 1990 && lastFour <= 2100 && firstTwo >= 1 && firstTwo <= 12) {
+      return new Date(lastFour, firstTwo - 1, 1, 0, 0, 0).toISOString()
+    }
+  }
+
+  // 5. Valores numéricos
+  if (/^-?\d+(\.\d+)?$/.test(trimmed)) {
+    return Number(trimmed)
+  }
+
+  return trimmed
+}
+
+function formatPreviewBind(val) {
+  if (val === null || val === undefined) return 'NULL'
+  if (typeof val === 'string' && /^\d{4}-\d{2}-\d{2}T/.test(val)) {
+    const d = new Date(val)
+    if (!isNaN(d.getTime())) {
+      const dd = String(d.getDate()).padStart(2, '0')
+      const mm = String(d.getMonth() + 1).padStart(2, '0')
+      const yyyy = d.getFullYear()
+      return `${dd}/${mm}/${yyyy} 00:00:00 (${val})`
+    }
+  }
+  return JSON.stringify(val)
+}
 
 function switchType(type) {
   currentType.value = type
@@ -306,15 +443,9 @@ function selectItem(name) {
 
 const coercedPayload = computed(() => {
   const payload = {}
-  for (const [k, v] of Object.entries(inputParams.value)) {
-    if (v === '' || v === undefined || v === null) continue
-    const trimmed = typeof v === 'string' ? v.trim() : v
-    if (typeof trimmed === 'string' && /^-?\d+(\.\d+)?$/.test(trimmed)) {
-      payload[k] = Number(trimmed)
-    } else {
-      payload[k] = trimmed
-    }
-  }
+  inParamList.value.forEach(param => {
+    payload[param] = coerceParamValue(inputParams.value[param], param)
+  })
   return payload
 })
 
@@ -323,23 +454,24 @@ const generatedPlSql = computed(() => {
   const name = selectedItem.value.sp_name || selectedItem.value.fn_name || selectedItemName.value
   const parts = []
 
-  ;(selectedItem.value.in_param || []).forEach(p => {
-    const val = inputParams.value[p]
-    if (val !== undefined && val !== '') {
-      parts.push(`  :${p} /* ${JSON.stringify(coercedPayload.value[p] ?? val)} */`)
+  inParamList.value.forEach(p => {
+    const rawVal = inputParams.value[p]
+    if (rawVal !== undefined && rawVal !== '') {
+      parts.push(`  :${p} /* ${formatPreviewBind(coercedPayload.value[p])} */`)
     } else {
-      parts.push(`  :${p}`)
+      parts.push(`  :${p} /* NULL */`)
     }
   })
 
-  if (Array.isArray(selectedItem.value.out_param) && selectedItem.value.out_param.length > 0) {
-    selectedItem.value.out_param.forEach(p => {
+  if (currentType.value === 'sp' && outParamList.value.length > 0) {
+    outParamList.value.forEach(p => {
       parts.push(`  :${p} /* OUT */`)
     })
   }
 
   if (currentType.value === 'fn') {
-    return `DECLARE\n  v_ret VARCHAR2(4000);\nBEGIN\n  v_ret := ${name}(\n${parts.join(',\n')}\n  );\nEND;`
+    const outVar = outParamList.value[0] || 'value'
+    return `BEGIN\n  :${outVar} := ${name}(\n${parts.join(',\n')}\n  );\nEND;`
   }
 
   if (parts.length === 0) {
@@ -353,6 +485,26 @@ const isPls306Error = computed(() => {
   const msg = String(lastError.value?.message || '')
   const code = String(lastError.value?.data?.code || '')
   return code === 'ORA-06550' || msg.includes('PLS-00306')
+})
+
+const plsqlOutWarning = computed(() => {
+  const out = executionResult.value?.out
+  if (!out || typeof out !== 'object') return null
+
+  const errCode = out.ValorError ?? out.vError ?? out.VERROR ?? out.error
+  const errMsg = out.vErrorMsg ?? out.VmsgError ?? out.VmensajeError ?? out.VERRORMSG
+  const salida = out.ValorSalida ?? out.vSALIDA ?? out.VSALIDA
+
+  if (errMsg && String(errMsg).trim() !== '') {
+    return `El procedimiento devolvió mensaje de error: "${errMsg}" (Código: ${errCode ?? salida ?? 'N/A'})`
+  }
+  if (errCode !== undefined && errCode !== null && Number(errCode) !== 0) {
+    return `El parámetro de error devolvió un código distinto de cero (${errCode}). Revise los parámetros enviados.`
+  }
+  if (salida !== undefined && salida !== null && Number(salida) < 0) {
+    return `El parámetro ValorSalida devolvió un valor negativo (${salida}), lo que suele indicar una condición de rechazo en PL/SQL.`
+  }
+  return null
 })
 
 const tabularRows = computed(() => {
@@ -385,7 +537,11 @@ async function runProcedure() {
     const res = await api.post(currentEndpoint.value, coercedPayload.value)
     executionResult.value = res.data
     lastDuration.value = res.durationMs
-    hostStore.showToast(`Procedimiento "${selectedItemName.value}" ejecutado con éxito (${res.durationMs} ms)`, 'success')
+    if (plsqlOutWarning.value) {
+      hostStore.showToast(`Procedimiento finalizado con advertencia PL/SQL: ${plsqlOutWarning.value}`, 'warning', 5000)
+    } else {
+      hostStore.showToast(`Procedimiento "${selectedItemName.value}" ejecutado (${res.durationMs} ms)`, 'success')
+    }
   } catch (err) {
     lastError.value = err
     hostStore.showToast(`Error al ejecutar: ${err.message}`, 'error')
@@ -419,16 +575,12 @@ function copyResultJson() {
 }
 
 function openInExplorer() {
-  const templatePayload = {}
-  ;(selectedItem.value?.in_param || []).forEach(p => {
-    templatePayload[p] = coercedPayload.value[p] !== undefined ? coercedPayload.value[p] : ''
-  })
   router.push({
     path: '/explorer',
     query: {
       method: 'POST',
       endpoint: currentEndpoint.value,
-      body: JSON.stringify(templatePayload, null, 2)
+      body: JSON.stringify(coercedPayload.value, null, 2)
     }
   })
 }
@@ -608,6 +760,15 @@ function openInExplorer() {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
   gap: 12px;
+}
+.date-preview-hint {
+  font-size: 0.72rem;
+  color: var(--color-info);
+  margin-top: 2px;
+}
+.date-preview-hint code {
+  font-family: var(--font-mono);
+  font-size: 0.7rem;
 }
 
 .loading-card {

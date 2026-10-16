@@ -67,6 +67,11 @@
         ⚙️ Config
       </button>
 
+      <!-- Acceso rápido al Manual de Uso -->
+      <button class="header-btn" @click="$router.push('/help')" title="Abrir Manual de Uso y Documentación">
+        📖 Ayuda
+      </button>
+
       <!-- Botón Cerrar Sesión -->
       <button class="header-btn btn-logout" @click="handleLogout" title="Cerrar sesión de administrador">
         🔒 Salir

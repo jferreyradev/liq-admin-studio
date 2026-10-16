@@ -183,14 +183,20 @@
                 :key="field"
                 class="form-group"
               >
-                <label class="form-label">{{ field }}:</label>
+                <label class="form-label" style="display: flex; align-items: center; justify-content: space-between;">
+                  <span>{{ field }}:</span>
+                  <span v-if="isPeriodoField(field)" class="badge badge-info" style="font-size: 0.65rem;" title="Regla de la API: El día es siempre 01">📅 PERÍODO (Día 01)</span>
+                </label>
                 <input
                   type="text"
                   class="form-control"
                   v-model="filterValues[field]"
-                  :placeholder="`Filtrar ${field}...`"
+                  :placeholder="isPeriodoField(field) ? 'Ej: 09/2026 o 01/09/2026 (Día 01 fijo)' : `Filtrar ${field}...`"
                   @keyup.enter="runView"
                 />
+                <span v-if="isPeriodoField(field) && filterValues[field]" class="periodo-preview-hint">
+                  ➔ Se enviará como: <code>{{ normalizePeriodoFilter(filterValues[field], field) }}</code>
+                </span>
               </div>
             </div>
 
@@ -402,6 +408,51 @@ const sqlMetaSummary = computed(() => {
   return parts.join(' • ')
 })
 
+function isPeriodoField(fieldName) {
+  const lower = String(fieldName || '').toLowerCase()
+  return lower.includes('periodo') || lower === 'per' || lower === 'vper'
+}
+
+function normalizePeriodoFilter(rawVal, fieldName) {
+  if (rawVal === undefined || rawVal === null) return ''
+  const trimmed = String(rawVal).trim()
+  if (!trimmed || !isPeriodoField(fieldName)) return trimmed
+
+  // 1. DD/MM/YYYY o D/M/YYYY -> siempre día 01: 01/MM/YYYY
+  const dmy = trimmed.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/)
+  if (dmy) {
+    return `01/${String(parseInt(dmy[2], 10)).padStart(2, '0')}/${dmy[3]}`
+  }
+
+  // 2. MM/YYYY o M/YYYY -> 01/MM/YYYY
+  const my = trimmed.match(/^(\d{1,2})\/(\d{4})$/)
+  if (my) {
+    return `01/${String(parseInt(my[1], 10)).padStart(2, '0')}/${my[2]}`
+  }
+
+  // 3. YYYY-MM o YYYY-MM-DD -> 01/MM/YYYY
+  const iso = trimmed.match(/^(\d{4})-(\d{1,2})(?:-(\d{1,2}))?$/)
+  if (iso) {
+    return `01/${String(parseInt(iso[2], 10)).padStart(2, '0')}/${iso[1]}`
+  }
+
+  // 4. Compacto YYYYMM (202609) o MMYYYY (092026) -> 01/MM/YYYY
+  if (/^\d{6}$/.test(trimmed)) {
+    const firstFour = parseInt(trimmed.slice(0, 4), 10)
+    const lastTwo = parseInt(trimmed.slice(4, 6), 10)
+    if (firstFour >= 1990 && firstFour <= 2100 && lastTwo >= 1 && lastTwo <= 12) {
+      return `01/${String(lastTwo).padStart(2, '0')}/${firstFour}`
+    }
+    const firstTwo = parseInt(trimmed.slice(0, 2), 10)
+    const lastFour = parseInt(trimmed.slice(2, 6), 10)
+    if (lastFour >= 1990 && lastFour <= 2100 && firstTwo >= 1 && firstTwo <= 12) {
+      return `01/${String(firstTwo).padStart(2, '0')}/${lastFour}`
+    }
+  }
+
+  return trimmed
+}
+
 const activeQueryParams = computed(() => {
   const params = {}
   if (fieldsParam.value.trim()) params.fields = fieldsParam.value.trim()
@@ -412,7 +463,7 @@ const activeQueryParams = computed(() => {
 
   Object.entries(filterValues.value).forEach(([k, v]) => {
     if (v !== undefined && v !== null && String(v).trim() !== '') {
-      params[k] = String(v).trim()
+      params[k] = normalizePeriodoFilter(v, k)
     }
   })
   return params
@@ -796,6 +847,12 @@ async function onJsonFileSelected(e) {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
   gap: 12px;
+}
+.periodo-preview-hint {
+  font-size: 0.7rem;
+  color: var(--color-primary);
+  margin-top: 3px;
+  word-break: break-all;
 }
 .engine-params-row {
   display: grid;

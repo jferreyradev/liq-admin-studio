@@ -7,6 +7,7 @@ import ProceduresView from '@/views/ProceduresView.vue'
 import SqlStudioView from '@/views/SqlStudioView.vue'
 import ApiExplorerView from '@/views/ApiExplorerView.vue'
 import ImporterView from '@/views/ImporterView.vue'
+import HelpView from '@/views/HelpView.vue'
 
 const routes = [
   {
@@ -43,6 +44,11 @@ const routes = [
     path: '/importer',
     name: 'importer',
     component: ImporterView
+  },
+  {
+    path: '/help',
+    name: 'help',
+    component: HelpView
   },
   {
     path: '/:pathMatch(.*)*',

@@ -95,14 +95,20 @@ ORDER BY p.apellido, p.nombre"
         <div class="section-title">🧪 Valores de Prueba para Parámetros Bind (al ejecutar "Probar Consulta"):</div>
         <div class="binds-grid">
           <div v-for="bind in detectedBinds" :key="bind" class="form-group">
-            <label class="form-label">:{{ bind }}</label>
+            <label class="form-label" style="display: flex; align-items: center; justify-content: space-between;">
+              <span>:{{ bind }}</span>
+              <span v-if="isPeriodoBind(bind)" class="badge badge-info" style="font-size: 0.65rem;">📅 Día 01</span>
+            </label>
             <input
               type="text"
               class="form-control"
               v-model="testBindValues[bind]"
-              :placeholder="`Valor para :${bind}`"
+              :placeholder="isPeriodoBind(bind) ? 'Ej: 09/2026 o 01/09/2026' : `Valor para :${bind}`"
               @keyup.enter="testQuery"
             />
+            <span v-if="isPeriodoBind(bind) && testBindValues[bind]" style="font-size: 0.7rem; color: var(--color-primary); margin-top: 2px;">
+              ➔ <code>{{ normalizePeriodoBind(testBindValues[bind], bind) }}</code>
+            </span>
           </div>
         </div>
       </div>
@@ -328,6 +334,41 @@ function previewParseStructure() {
   }
 }
 
+function isPeriodoBind(bindName) {
+  const lower = String(bindName || '').toLowerCase()
+  return lower.includes('periodo') || lower === 'per' || lower === 'vper'
+}
+
+function normalizePeriodoBind(rawVal, bindName) {
+  if (rawVal === undefined || rawVal === null) return ''
+  const trimmed = String(rawVal).trim()
+  if (!trimmed || !isPeriodoBind(bindName)) return trimmed
+
+  const dmy = trimmed.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/)
+  if (dmy) return `01/${String(parseInt(dmy[2], 10)).padStart(2, '0')}/${dmy[3]}`
+
+  const my = trimmed.match(/^(\d{1,2})\/(\d{4})$/)
+  if (my) return `01/${String(parseInt(my[1], 10)).padStart(2, '0')}/${my[2]}`
+
+  const iso = trimmed.match(/^(\d{4})-(\d{1,2})(?:-(\d{1,2}))?$/)
+  if (iso) return `01/${String(parseInt(iso[2], 10)).padStart(2, '0')}/${iso[1]}`
+
+  if (/^\d{6}$/.test(trimmed)) {
+    const firstFour = parseInt(trimmed.slice(0, 4), 10)
+    const lastTwo = parseInt(trimmed.slice(4, 6), 10)
+    if (firstFour >= 1990 && firstFour <= 2100 && lastTwo >= 1 && lastTwo <= 12) {
+      return `01/${String(lastTwo).padStart(2, '0')}/${firstFour}`
+    }
+    const firstTwo = parseInt(trimmed.slice(0, 2), 10)
+    const lastFour = parseInt(trimmed.slice(2, 6), 10)
+    if (lastFour >= 1990 && lastFour <= 2100 && firstTwo >= 1 && firstTwo <= 12) {
+      return `01/${String(firstTwo).padStart(2, '0')}/${lastFour}`
+    }
+  }
+
+  return trimmed
+}
+
 async function testQuery() {
   if (!sqlQuery.value.trim()) return
   executing.value = true
@@ -350,7 +391,7 @@ async function testQuery() {
     detectedBinds.value.forEach(b => {
       const val = testBindValues.value[b]
       if (val !== undefined && String(val).trim() !== '') {
-        queryParams[b] = String(val).trim()
+        queryParams[b] = normalizePeriodoBind(val, b)
       }
     })
 
