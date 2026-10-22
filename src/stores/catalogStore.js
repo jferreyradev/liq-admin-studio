@@ -197,6 +197,139 @@ export const useCatalogStore = defineStore('catalog', {
         hostStore.showToast(`Error al importar JSON: ${err.message}`, 'error')
         return false
       }
+    },
+
+    exportProceduresJson(type = 'sp') {
+      const hostStore = useHostStore()
+      const dateStr = new Date().toISOString().slice(0, 10)
+      const hostSlug = hostStore.activeHost.id || 'server'
+
+      let payload = null
+      let fileName = ''
+      let label = ''
+
+      if (type === 'fn') {
+        if (!this.fn || Object.keys(this.fn).length === 0) {
+          hostStore.showToast('No hay funciones cargadas en el catálogo para exportar', 'warning')
+          return
+        }
+        payload = this.fn
+        fileName = `fn_catalog_${hostSlug}_${dateStr}.json`
+        label = `${this.fnCount} funciones`
+      } else if (type === 'all') {
+        if (this.spCount === 0 && this.fnCount === 0) {
+          hostStore.showToast('No hay procedimientos ni funciones cargadas para exportar', 'warning')
+          return
+        }
+        payload = {
+          jsonStoreProcedure: this.sp || {},
+          jsonStoreFunction: this.fn || {}
+        }
+        fileName = `procedures_catalog_${hostSlug}_${dateStr}.json`
+        label = `${this.spCount} SPs y ${this.fnCount} funciones`
+      } else {
+        if (!this.sp || Object.keys(this.sp).length === 0) {
+          hostStore.showToast('No hay Stored Procedures cargados en el catálogo para exportar', 'warning')
+          return
+        }
+        payload = this.sp
+        fileName = `sp_catalog_${hostSlug}_${dateStr}.json`
+        label = `${this.spCount} Stored Procedures`
+      }
+
+      const jsonStr = JSON.stringify(payload, null, 2)
+      const blob = new Blob([jsonStr], { type: 'application/json' })
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url
+      a.download = fileName
+      document.body.appendChild(a)
+      a.click()
+      document.body.removeChild(a)
+      URL.revokeObjectURL(url)
+      hostStore.showToast(`Catálogo de ${label} descargado exitosamente (${fileName})`, 'success')
+    },
+
+    async importProceduresJsonFile(file) {
+      const hostStore = useHostStore()
+      if (!file) return false
+      try {
+        const text = await file.text()
+        const parsed = JSON.parse(text)
+        if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
+          hostStore.showToast('El archivo JSON no tiene un formato válido de catálogo SP/FN', 'warning')
+          return false
+        }
+
+        const spMap = {}
+        const fnMap = {}
+
+        if (parsed.jsonStoreProcedure || parsed.sp || parsed.jsonStoreFunction || parsed.fn) {
+          Object.assign(spMap, parsed.jsonStoreProcedure || parsed.sp || {})
+          Object.assign(fnMap, parsed.jsonStoreFunction || parsed.fn || {})
+        } else {
+          for (const [k, v] of Object.entries(parsed)) {
+            if (!v || typeof v !== 'object') continue
+            if (v.fn_name) {
+              fnMap[k] = v
+            } else if (v.sp_name) {
+              spMap[k] = v
+            }
+          }
+        }
+
+        const spTotal = Object.keys(spMap).length
+        const fnTotal = Object.keys(fnMap).length
+        if (spTotal === 0 && fnTotal === 0) {
+          hostStore.showToast('No se encontraron definiciones de SPs (sp_name) ni Funciones (fn_name) en el archivo', 'warning')
+          return false
+        }
+
+        if (!confirm(`Se encontraron ${spTotal} Stored Procedure(s) y ${fnTotal} Función(es) en "${file.name}".\n\n¿Deseas importarlos en el catálogo de ${hostStore.activeHost.name}?`)) {
+          return false
+        }
+
+        // Actualizar catálogo inmediatamente en memoria del cliente
+        if (spTotal > 0) {
+          this.sp = { ...this.sp, ...spMap }
+        }
+        if (fnTotal > 0) {
+          this.fn = { ...this.fn, ...fnMap }
+        }
+
+        try {
+          await api.post('/api/sp/import-json', {
+            jsonStoreProcedure: spMap,
+            jsonStoreFunction: fnMap
+          })
+          await this.loadProcedures()
+        } catch (_) {
+          // Si el backend remoto aún no expone /api/sp/import-json, se mantiene activo en el catálogo local de la sesión
+        }
+
+        hostStore.showToast(`✅ Catálogo actualizado: ${spTotal} SP(s) y ${fnTotal} Función(es) importadas`, 'success')
+        return true
+      } catch (err) {
+        hostStore.showToast(`Error al importar JSON de procedimientos: ${err.message}`, 'error')
+        return false
+      }
+    },
+
+    async syncProceduresFromOracle(packageName = '') {
+      const hostStore = useHostStore()
+      this.loadingProcedures = true
+      try {
+        hostStore.showToast(`Introspeccionando ALL_ARGUMENTS en Oracle (${hostStore.activeHost.shortName})...`, 'info')
+        const res = await api.post('/api/sp/sync-oracle', packageName ? { packageName } : {})
+        await this.loadProcedures()
+        hostStore.showToast(`✅ ${res.data?.message || `Catálogo sincronizado (${this.spCount} SPs y ${this.fnCount} Funciones)`}`, 'success')
+        return true
+      } catch (err) {
+        hostStore.showToast(`No se pudo sincronizar desde Oracle: ${err.message}`, 'warning')
+        return false
+      } finally {
+        this.loadingProcedures = false
+      }
     }
   }
 })

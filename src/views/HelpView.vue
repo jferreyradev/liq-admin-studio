@@ -241,11 +241,11 @@
 
         <div class="help-grid-2">
           <div class="info-box">
-            <h4>⚡ Ejecución, Binds y Regla de Períodos (Día <code>01</code>)</h4>
+            <h4>⚡ Ejecución, Exportación y Regla de Períodos (Día <code>01</code>)</h4>
             <ul>
               <li>Alterna entre <strong>Stored Procedures</strong> (<code>POST /api/sp/:name</code>) y <strong>Funciones</strong> (<code>POST /api/fn/:name</code>).</li>
+              <li><strong>📤 Descarga e Importación de SPs y Funciones:</strong> En la cabecera de la lista lateral puedes pulsar <strong>📤</strong> para descargar los SPs o Funciones disponibles a JSON, <strong>📦</strong> para descargar el paquete completo (SPs + Funciones), <strong>📁</strong> para importar un lote JSON y <strong>🔎</strong> para descubrir/sincronizar todos los procedimientos desde <code>ALL_ARGUMENTS</code> en Oracle.</li>
               <li><strong>📅 Regla Obligatoria de Períodos (Día <code>01</code> Fijo):</strong> En toda la API, cualquier parámetro de período (<code>Periodo</code>, <code>vPERIODO</code>, <code>PeriodoLiq</code>, <code>vPER</code>) utiliza <strong>siempre el día <code>01</code></strong>; solamente cambian el mes y el año. Puedes ingresar <code>09/2026</code>, <code>2026-09</code>, <code>202609</code> o <code>01/09/2026</code> y el sistema forzará automáticamente el día <code>01</code> en medianoche local.</li>
-              <li>Los valores numéricos se convierten automáticamente a <code>NUMBER</code> y las cadenas vacías se envían como <code>NULL</code>.</li>
               <li>Durante la ejecución verás un <strong>cronómetro en tiempo real</strong> y los campos se bloquearán hasta que Oracle confirme la transacción.</li>
             </ul>
           </div>

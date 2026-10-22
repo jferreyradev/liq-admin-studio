@@ -27,15 +27,59 @@
             placeholder="Buscar procedimiento o paquete..."
             v-model="searchTerm"
           />
-          <button
-            class="btn btn-sm"
-            @click="reloadProcedures"
-            :disabled="catalogStore.loadingProcedures"
-            title="Recargar catálogo de SPs y Funciones"
-          >
-            {{ catalogStore.loadingProcedures ? '...' : '🔄' }}
-          </button>
         </div>
+
+        <div class="meta-row">
+          <span class="badge badge-info">
+            {{ filteredItems.length }} de {{ currentList.length }} {{ currentType === 'sp' ? 'SPs' : 'FNs' }}
+          </span>
+          <div class="sidebar-tools">
+            <button
+              class="btn btn-sm"
+              @click="triggerImportJson"
+              title="Importar lote de SPs / Funciones desde archivo JSON"
+            >
+              📁
+            </button>
+            <button
+              class="btn btn-sm"
+              @click="catalogStore.exportProceduresJson(currentType)"
+              :title="`Descargar todos los ${currentType === 'sp' ? 'Stored Procedures' : 'Funciones'} disponibles a JSON`"
+            >
+              📤
+            </button>
+            <button
+              class="btn btn-sm"
+              @click="catalogStore.exportProceduresJson('all')"
+              title="Descargar catálogo completo (SPs + Funciones) en un único archivo JSON"
+            >
+              📦
+            </button>
+            <button
+              class="btn btn-sm"
+              @click="catalogStore.syncProceduresFromOracle()"
+              :disabled="catalogStore.loadingProcedures"
+              title="Descubrir y sincronizar todos los SPs/Funciones desde Oracle (ALL_ARGUMENTS)"
+            >
+              🔎
+            </button>
+            <button
+              class="btn btn-sm"
+              @click="reloadProcedures"
+              :disabled="catalogStore.loadingProcedures"
+              title="Recargar catálogo de SPs y Funciones"
+            >
+              {{ catalogStore.loadingProcedures ? '...' : '🔄' }}
+            </button>
+          </div>
+        </div>
+        <input
+          ref="jsonFileInput"
+          type="file"
+          accept=".json"
+          style="display: none;"
+          @change="onJsonFileSelected"
+        />
       </div>
 
       <div class="item-list">
@@ -74,7 +118,14 @@
                 Oracle Target: <code>{{ selectedItem.sp_name || selectedItem.fn_name }}</code>
               </p>
             </div>
-            <div style="display: flex; gap: 8px;">
+            <div style="display: flex; gap: 8px; flex-wrap: wrap;">
+              <button
+                class="btn btn-sm"
+                @click="catalogStore.exportProceduresJson(currentType)"
+                :title="`Descargar catálogo de ${currentType === 'sp' ? 'Stored Procedures' : 'Funciones'} en formato JSON`"
+              >
+                📤 Descargar {{ currentType === 'sp' ? 'SPs' : 'FNs' }} JSON
+              </button>
               <button class="btn btn-sm" @click="inputParams = {}" :disabled="executing">🧹 Limpiar</button>
               <button class="btn btn-primary" :disabled="executing" @click="runProcedure">
                 {{ executing ? `⏳ Ejecutando (${elapsedSeconds}s)...` : '▶ Ejecutar en Oracle' }}
@@ -247,6 +298,7 @@ let timerInterval = null
 const executionResult = ref(null)
 const lastError = ref(null)
 const lastDuration = ref(0)
+const jsonFileInput = ref(null)
 
 onMounted(async () => {
   if (catalogStore.spCount === 0 && catalogStore.fnCount === 0) {
@@ -584,6 +636,20 @@ function openInExplorer() {
     }
   })
 }
+
+function triggerImportJson() {
+  if (jsonFileInput.value) {
+    jsonFileInput.value.value = ''
+    jsonFileInput.value.click()
+  }
+}
+
+async function onJsonFileSelected(e) {
+  const file = e.target.files?.[0]
+  if (file) {
+    await catalogStore.importProceduresJsonFile(file)
+  }
+}
 </script>
 
 <style scoped>
@@ -616,6 +682,17 @@ function openInExplorer() {
 }
 .search-input-row input {
   flex: 1;
+}
+
+.meta-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+}
+.sidebar-tools {
+  display: flex;
+  gap: 4px;
 }
 
 .type-selector {

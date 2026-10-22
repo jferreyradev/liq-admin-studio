@@ -115,6 +115,11 @@ Permite inspeccionar y ejecutar los más de 700 procedimientos almacenados y fun
 5. **Inspección de Salida y Diagnóstico:**
    * Muestra los parámetros de salida (`OUT Binds`), el JSON completo y, si el procedimiento devuelve filas o un cursor, renderiza automáticamente la **Tabla de Resultados** exportable a CSV.
    * Si ocurre un error `ORA-06550` / `PLS-00306` (diferencia en cantidad o tipos de argumentos), muestra un cuadro de diagnóstico detallando el bloque PL/SQL y los binds enviados.
+6. **Descarga, Importación y Sincronización de SPs y Funciones:**
+   * **📤 Descargar JSON (SPs o Funciones):** Exporta el catálogo activo (`sp_catalog_<servidor>_<fecha>.json` o `fn_catalog_<servidor>_<fecha>.json`).
+   * **📦 Descargar Paquete Completo:** Exporta un único archivo `procedures_catalog_<servidor>_<fecha>.json` con ambos catálogos (`jsonStoreProcedure` y `jsonStoreFunction`).
+   * **📁 Importar JSON:** Carga un archivo JSON de procedimientos/funciones en el servidor activo (`POST /api/sp/import-json`).
+   * **🔎 Sincronizar desde Oracle (`ALL_ARGUMENTS`):** Descubre en vivo todos los procedimientos y funciones del esquema en Oracle (`POST /api/sp/sync-oracle`).
 
 ---
 
