@@ -158,15 +158,16 @@ Permite cargar planillas `.xlsx`, `.xls`, `.csv`, `.tsv` o `.txt` (hasta 50 MB) 
 
 ---
 
-## 🔄 3. Guía de Migración y Clonación de Vistas entre Municipios
+## 🔄 3. Guía de Migración y Clonación de Vistas y Procedimientos entre Municipios
 
-Para llevar todas las vistas nuevas creadas en **Desarrollo** (o **Localhost**) hacia un municipio en producción (ej. **Trancas** o **Concepción**):
+Para llevar todas las **vistas** o el catálogo de **Stored Procedures y Funciones** desde **Desarrollo** (o **Localhost**) hacia un municipio en producción (ej. **Trancas** o **Concepción**):
 
 1. En el selector superior (`🏢 Servidor`), selecciona **Desarrollo** (o **Localhost**).
-2. Ve a **📋 Vistas y Consultas** y haz clic en el botón **📤 (Exportar JSON)** arriba de la lista lateral. Se descargará un archivo `views_catalog_desarrollo_YYYY-MM-DD.json`.
+2. **Para Vistas:** Ve a **📋 Vistas y Consultas** y haz clic en **📤 (Exportar JSON)** arriba de la lista lateral (`views_catalog_<servidor>_YYYY-MM-DD.json`).
+   **Para Stored Procedures y Funciones:** Ve a **⚡ Stored Procedures & FNs** y haz clic en **📤** (para exportar SPs o Funciones por separado) o en **📦** (para descargar el paquete completo `procedures_catalog_<servidor>_YYYY-MM-DD.json`).
 3. En el selector superior (`🏢 Servidor`), cambia al municipio destino (ej. **Trancas**).
-4. Haz clic en el botón **📁 (Importar JSON)**, selecciona el archivo descargado y confirma.
-5. ¡Listo! Todas las vistas quedarán registradas en la tabla `API_VIEW_MAPPER` de ese municipio y activas en su memoria RAM sin necesidad de conectarse por SSH ni reiniciar el servidor.
+4. Haz clic en el botón **📁 (Importar JSON)** de la sección correspondiente, selecciona el archivo descargado y confirma.
+5. ¡Listo! Todas las vistas y/o procedimientos quedarán registrados y activos en la memoria RAM del servidor destino sin necesidad de conectarse por SSH ni reiniciar el proceso.
 
 ---
 

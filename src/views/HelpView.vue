@@ -179,14 +179,14 @@
         </div>
       </div>
 
-      <!-- Sección 4: Migración de Vistas entre Municipios -->
+      <!-- Sección 4: Migración de Vistas y SPs entre Municipios -->
       <div v-show="shouldShow('migration')" id="sec-migration" class="card help-section-card highlight-card">
         <div class="section-header">
           <div class="section-title-group">
             <span class="sec-icon">🔄</span>
             <div>
-              <h2 class="card-title">4. Cómo Migrar / Clonar Vistas entre Municipios (Import / Export JSON)</h2>
-              <p class="text-secondary">Lleva las vistas creadas en Desarrollo o Localhost hacia Trancas, Concepción, Tafí Viejo o Burruyacú en segundos.</p>
+              <h2 class="card-title">4. Cómo Migrar / Clonar Vistas y SPs entre Municipios (Import / Export JSON)</h2>
+              <p class="text-secondary">Lleva las vistas y el catálogo de Stored Procedures / Funciones desde Desarrollo o Localhost hacia Trancas, Concepción, Tafí Viejo o Burruyacú en segundos.</p>
             </div>
           </div>
         </div>
@@ -204,7 +204,7 @@
             <span class="wf-num">2</span>
             <div>
               <strong>Exporta el catálogo a JSON</strong>
-              <p>En <strong>Vistas</strong> o <strong>SQL Studio</strong>, pulsa <strong>📤 Exportar JSON</strong>. Se descargará <code>views_catalog_...json</code>.</p>
+              <p>En <strong>Vistas</strong> o en <strong>Stored Procedures & FNs</strong>, pulsa <strong>📤 Exportar JSON</strong> (o <strong>📦</strong> para el paquete completo de SPs + FNs).</p>
             </div>
           </div>
           <div class="wf-arrow">➔</div>
@@ -220,7 +220,7 @@
             <span class="wf-num">4</span>
             <div>
               <strong>Importa el archivo JSON</strong>
-              <p>Pulsa <strong>📁 Importar JSON</strong> y selecciona el archivo. Todas las vistas se guardarán en <code>API_VIEW_MAPPER</code> al instante.</p>
+              <p>Pulsa <strong>📁 Importar JSON</strong> y selecciona el archivo descargado. Quedará registrado y activo en memoria al instante.</p>
             </div>
           </div>
         </div>
@@ -359,10 +359,28 @@
                 <td>Sincroniza el archivo <code>config/mapperViews.js</code> del servidor hacia Oracle.</td>
               </tr>
               <tr>
+                <td><span class="badge badge-success">GET</span></td>
+                <td><code>/api/sp/list</code> / <code>/api/fn/list</code></td>
+                <td>Pública</td>
+                <td>Devuelve el catálogo completo de Stored Procedures y Funciones disponibles.</td>
+              </tr>
+              <tr>
                 <td><span class="badge badge-info">POST</span></td>
                 <td><code>/api/sp/:name</code></td>
                 <td>Pública</td>
                 <td>Ejecuta un Stored Procedure enviando los parámetros <code>IN</code> en el cuerpo JSON.</td>
+              </tr>
+              <tr>
+                <td><span class="badge badge-info">POST</span></td>
+                <td><code>/api/sp/import-json</code></td>
+                <td><code>X-Admin-Key</code></td>
+                <td>Importa un catálogo JSON de SPs y/o Funciones en la caché RAM y en <code>spmapper.local.json</code>.</td>
+              </tr>
+              <tr>
+                <td><span class="badge badge-info">POST</span></td>
+                <td><code>/api/sp/sync-oracle</code></td>
+                <td><code>X-Admin-Key</code></td>
+                <td>Descubre y sincroniza en vivo todos los SPs y Funciones desde <code>ALL_ARGUMENTS</code> en Oracle.</td>
               </tr>
               <tr>
                 <td><span class="badge badge-info">POST</span></td>
