@@ -81,8 +81,10 @@ Permite explorar, parametrizar y ejecutar cualquiera de las consultas registrada
 5. **Resultados y Exportación:**
    * Alterna entre **📊 Tabla** (con buscador instantáneo y ordenamiento haciendo clic en las cabeceras) y **{ } JSON**.
    * Exporta los datos con **📋 JSON**, **📋 CSV** o **📥 Descargar CSV**.
-6. **Importación / Exportación de Catálogo JSON:**
-   * En la cabecera de la lista lateral tienes los botones **📁 (Importar JSON)** y **📤 (Exportar JSON)** para respaldar o migrar el catálogo de vistas.
+6. **Exportación Selectiva, Análisis para Agentes IA e Importación de Catálogo JSON:**
+   * Cada vista de la lista lateral incluye una **casilla de selección (`checkbox`)** para marcar únicamente las consultas que te interesan (o pulsar `☑️ Marcar filtradas`).
+   * **🤖 Selección para Agente IA:** Al marcar una o más vistas (puedes combinarlas también con Stored Procedures o Funciones desde `/procedures`), aparece el cuadro **🤖 Selección para Agente IA** con los botones **🤖 Descargar JSON Agente** y **📋 Copiar**, que generan un único JSON con el SQL reconstruido (`sqlQuery`), columnas, parámetros `WHERE`, llamadas PL/SQL y las reglas de dominio de la API.
+   * **📤 Exportación de Catálogo:** Si hay vistas marcadas, **📤** descarga únicamente las seleccionadas; si no hay ninguna marcada, descarga el catálogo completo. También puedes descargar una sola vista con el botón **📤 JSON Vista** en su cabecera.
 
 ---
 
@@ -115,9 +117,11 @@ Permite inspeccionar y ejecutar los más de 700 procedimientos almacenados y fun
 5. **Inspección de Salida y Diagnóstico:**
    * Muestra los parámetros de salida (`OUT Binds`), el JSON completo y, si el procedimiento devuelve filas o un cursor, renderiza automáticamente la **Tabla de Resultados** exportable a CSV.
    * Si ocurre un error `ORA-06550` / `PLS-00306` (diferencia en cantidad o tipos de argumentos), muestra un cuadro de diagnóstico detallando el bloque PL/SQL y los binds enviados.
-6. **Descarga, Importación y Sincronización de SPs y Funciones:**
-   * **📤 Descargar JSON (SPs o Funciones):** Exporta el catálogo activo (`sp_catalog_<servidor>_<fecha>.json` o `fn_catalog_<servidor>_<fecha>.json`).
-   * **📦 Descargar Paquete Completo:** Exporta un único archivo `procedures_catalog_<servidor>_<fecha>.json` con ambos catálogos (`jsonStoreProcedure` y `jsonStoreFunction`).
+6. **Selección por Checkbox, Exportación para Agente IA, Importación y Sincronización de SPs y Funciones:**
+   * **Selección individual o múltiple:** Marca con los checkboxes de la lista lateral qué Stored Procedures y/o Funciones deseas incluir (o usa `☑️ Marcar filtrados`).
+   * **🤖 Bundle para Agente IA:** Descarga (**🤖 Descargar JSON Agente**) o copia al portapapeles (**📋 Copiar**) un JSON combinado con las Vistas + SPs + Funciones seleccionadas (incluyendo su bloque `BEGIN ... END;`, parámetros `IN`/`OUT` y reglas de dominio) listo para entregar a un Agente IA para análisis.
+   * **📤 Descargar JSON (SPs o Funciones):** Exporta únicamente los procedimientos marcados (o todo el catálogo activo si no marcaste ninguno). También puedes descargar solo el procedimiento actual con **📤 JSON SP**.
+   * **📦 Descargar Paquete Completo:** Exporta un único archivo `procedures_...json` con ambos catálogos (`jsonStoreProcedure` y `jsonStoreFunction`).
    * **📁 Importar JSON:** Carga un archivo JSON de procedimientos/funciones en el servidor activo (`POST /api/sp/import-json`).
    * **🔎 Sincronizar desde Oracle (`ALL_ARGUMENTS`):** Descubre en vivo todos los procedimientos y funciones del esquema en Oracle (`POST /api/sp/sync-oracle`).
 

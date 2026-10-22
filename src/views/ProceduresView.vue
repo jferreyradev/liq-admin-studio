@@ -44,14 +44,14 @@
             <button
               class="btn btn-sm"
               @click="catalogStore.exportProceduresJson(currentType)"
-              :title="`Descargar todos los ${currentType === 'sp' ? 'Stored Procedures' : 'Funciones'} disponibles a JSON`"
+              :title="currentSelectedCount > 0 ? `Descargar los ${currentSelectedCount} ${currentType === 'sp' ? 'SPs' : 'Funciones'} seleccionados a JSON` : `Descargar todos los ${currentType === 'sp' ? 'Stored Procedures' : 'Funciones'} disponibles a JSON`"
             >
-              📤
+              📤 {{ currentSelectedCount > 0 ? `(${currentSelectedCount})` : '' }}
             </button>
             <button
               class="btn btn-sm"
               @click="catalogStore.exportProceduresJson('all')"
-              title="Descargar catálogo completo (SPs + Funciones) en un único archivo JSON"
+              title="Descargar catálogo (SPs + Funciones) en un único archivo JSON"
             >
               📦
             </button>
@@ -73,6 +73,71 @@
             </button>
           </div>
         </div>
+
+        <!-- Controles de Selección para Análisis de Agente IA / Exportación Selectiva -->
+        <div class="selection-toolbar">
+          <button
+            type="button"
+            class="btn-link"
+            @click="selectFilteredProcs"
+            title="Marcar todos los procedimientos filtrados actualmente"
+          >
+            ☑️ Marcar filtrados ({{ filteredItems.length }})
+          </button>
+          <span v-if="currentSelectedCount > 0">•</span>
+          <button
+            v-if="currentSelectedCount > 0"
+            type="button"
+            class="btn-link"
+            @click="onlyShowSelected = !onlyShowSelected"
+          >
+            {{ onlyShowSelected ? 'Ver todos' : `Ver marcados (${currentSelectedCount})` }}
+          </button>
+          <span v-if="currentSelectedCount > 0">•</span>
+          <button
+            v-if="currentSelectedCount > 0"
+            type="button"
+            class="btn-link text-danger"
+            @click="clearProcSelection"
+          >
+            ✕ Limpiar
+          </button>
+        </div>
+
+        <!-- Barra de Exportación para Agente IA cuando hay ítems seleccionados -->
+        <div v-if="catalogStore.totalSelectedForAgent > 0" class="agent-selection-box">
+          <div class="agent-box-header">
+            <span>🤖 <strong>Selección para Agente IA:</strong></span>
+            <span class="agent-counts">
+              {{ catalogStore.selectedViewsCount }} Vistas · {{ catalogStore.selectedSpCount }} SPs · {{ catalogStore.selectedFnCount }} FNs
+            </span>
+          </div>
+          <div class="agent-box-actions">
+            <button
+              class="btn btn-sm btn-primary"
+              @click="catalogStore.exportAgentBundleJson()"
+              title="Descargar JSON unificado con Vistas, SPs, llamadas PL/SQL y reglas de dominio para un Agente IA"
+            >
+              🤖 Descargar JSON Agente
+            </button>
+            <button
+              class="btn btn-sm"
+              @click="catalogStore.copyAgentBundleClipboard()"
+              title="Copiar JSON de contexto al portapapeles para pegar directamente en el chat del Agente IA"
+            >
+              📋 Copiar
+            </button>
+            <button
+              v-if="currentSelectedCount > 0"
+              class="btn btn-sm"
+              @click="catalogStore.exportProceduresJson(currentType)"
+              title="Descargar únicamente el catálogo JSON de los procedimientos seleccionados"
+            >
+              📤 Solo {{ currentType.toUpperCase() }}s
+            </button>
+          </div>
+        </div>
+
         <input
           ref="jsonFileInput"
           type="file"
@@ -84,13 +149,25 @@
 
       <div class="item-list">
         <div
-          v-for="item in filteredItems"
+          v-for="item in displayedItems"
           :key="item.name"
           class="catalog-item"
-          :class="{ active: selectedItemName === item.name }"
+          :class="{
+            active: selectedItemName === item.name,
+            checked: isProcChecked(item.name)
+          }"
           @click="selectItem(item.name)"
         >
-          <div class="item-title">{{ item.name }}</div>
+          <div class="item-header-row">
+            <input
+              type="checkbox"
+              class="item-checkbox"
+              :checked="isProcChecked(item.name)"
+              @click.stop="catalogStore.toggleProcSelection(currentType, item.name)"
+              title="Seleccionar este procedimiento para exportar a JSON o proveer a un Agente IA"
+            />
+            <div class="item-title">{{ item.name }}</div>
+          </div>
           <div class="item-desc">{{ item.config?.sp_name || item.config?.fn_name || 'PL/SQL' }}</div>
         </div>
       </div>
@@ -121,10 +198,17 @@
             <div style="display: flex; gap: 8px; flex-wrap: wrap;">
               <button
                 class="btn btn-sm"
-                @click="catalogStore.exportProceduresJson(currentType)"
-                :title="`Descargar catálogo de ${currentType === 'sp' ? 'Stored Procedures' : 'Funciones'} en formato JSON`"
+                @click="catalogStore.exportProceduresJson(currentType, [selectedItemName])"
+                :title="`Descargar definición JSON únicamente de ${selectedItemName}`"
               >
-                📤 Descargar {{ currentType === 'sp' ? 'SPs' : 'FNs' }} JSON
+                📤 JSON {{ currentType.toUpperCase() }}
+              </button>
+              <button
+                class="btn btn-sm"
+                @click="catalogStore.exportAgentBundleJson(currentType === 'sp' ? { sp: selectedItemName } : { fn: selectedItemName })"
+                :title="catalogStore.totalSelectedForAgent > 0 ? `Descargar bundle para Agente IA (${catalogStore.totalSelectedForAgent} seleccionados)` : 'Descargar contexto enriquecido de este procedimiento para análisis de un Agente IA'"
+              >
+                🤖 {{ catalogStore.totalSelectedForAgent > 0 ? `JSON Agente (${catalogStore.totalSelectedForAgent})` : 'Para Agente IA' }}
               </button>
               <button class="btn btn-sm" @click="inputParams = {}" :disabled="executing">🧹 Limpiar</button>
               <button class="btn btn-primary" :disabled="executing" @click="runProcedure">
@@ -288,6 +372,7 @@ const catalogStore = useCatalogStore()
 const currentType = ref('sp')
 const searchTerm = ref('')
 const selectedItemName = ref('')
+const onlyShowSelected = ref(false)
 const inputParams = ref({})
 const plsqlCollapsed = ref(false)
 
@@ -349,6 +434,34 @@ const filteredItems = computed(() => {
     )
   })
 })
+
+const currentSelectedCount = computed(() =>
+  currentType.value === 'sp' ? catalogStore.selectedSpCount : catalogStore.selectedFnCount
+)
+
+function isProcChecked(name) {
+  return currentType.value === 'sp'
+    ? catalogStore.selectedSp.includes(name)
+    : catalogStore.selectedFn.includes(name)
+}
+
+const displayedItems = computed(() => {
+  if (!onlyShowSelected.value) return filteredItems.value
+  return filteredItems.value.filter(item => isProcChecked(item.name))
+})
+
+function selectFilteredProcs() {
+  catalogStore.selectProcs(
+    currentType.value,
+    filteredItems.value.map(i => i.name)
+  )
+  hostStore.showToast(`Se marcaron ${filteredItems.value.length} elementos`, 'info')
+}
+
+function clearProcSelection() {
+  catalogStore.clearSelectedProcs(currentType.value)
+  onlyShowSelected.value = false
+}
 
 const selectedItem = computed(() => {
   if (!selectedItemName.value) return null
@@ -695,6 +808,48 @@ async function onJsonFileSelected(e) {
   gap: 4px;
 }
 
+.selection-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.72rem;
+  color: var(--text-muted);
+  flex-wrap: wrap;
+}
+.text-danger {
+  color: #DC2626 !important;
+}
+
+.agent-selection-box {
+  background: linear-gradient(135deg, #F5F3FF 0%, #EDE9FE 100%);
+  border: 1px solid #C4B5FD;
+  border-radius: var(--radius-sm);
+  padding: 8px 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.agent-box-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 0.73rem;
+  color: #4C1D95;
+}
+.agent-counts {
+  font-size: 0.68rem;
+  font-weight: 700;
+  background: #DDD6FE;
+  color: #5B21B6;
+  padding: 1px 6px;
+  border-radius: 9999px;
+}
+.agent-box-actions {
+  display: flex;
+  gap: 4px;
+  flex-wrap: wrap;
+}
+
 .type-selector {
   display: flex;
   border: 1px solid var(--border-color);
@@ -733,14 +888,32 @@ async function onJsonFileSelected(e) {
 .catalog-item:hover {
   background-color: var(--bg-hover);
 }
+.catalog-item.checked {
+  background-color: rgba(124, 58, 237, 0.05);
+}
 .catalog-item.active {
   background-color: rgba(106, 27, 154, 0.08);
   border-left-color: var(--color-primary);
+}
+.item-header-row {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+}
+.item-checkbox {
+  cursor: pointer;
+  accent-color: var(--color-primary);
+  width: 14px;
+  height: 14px;
+  flex-shrink: 0;
 }
 .item-title {
   font-size: 0.84rem;
   font-weight: 700;
   color: var(--text-primary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 .item-desc {
   font-size: 0.72rem;

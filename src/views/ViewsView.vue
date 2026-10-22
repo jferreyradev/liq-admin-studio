@@ -24,9 +24,9 @@
             <button
               class="btn btn-sm"
               @click="catalogStore.exportViewsJson()"
-              title="Exportar todas las vistas de este servidor a JSON"
+              :title="catalogStore.selectedViewsCount > 0 ? `Exportar las ${catalogStore.selectedViewsCount} vistas seleccionadas a JSON` : 'Exportar todas las vistas de este servidor a JSON'"
             >
-              📤
+              📤 {{ catalogStore.selectedViewsCount > 0 ? `(${catalogStore.selectedViewsCount})` : '' }}
             </button>
             <button
               class="btn btn-sm"
@@ -38,6 +38,71 @@
             </button>
           </div>
         </div>
+
+        <!-- Controles de Selección para Análisis de Agente IA / Exportación Selectiva -->
+        <div class="selection-toolbar">
+          <button
+            type="button"
+            class="btn-link"
+            @click="selectFilteredViews"
+            title="Marcar todas las vistas filtradas actualmente"
+          >
+            ☑️ Marcar filtradas ({{ filteredViews.length }})
+          </button>
+          <span v-if="catalogStore.selectedViewsCount > 0">•</span>
+          <button
+            v-if="catalogStore.selectedViewsCount > 0"
+            type="button"
+            class="btn-link"
+            @click="onlyShowSelected = !onlyShowSelected"
+          >
+            {{ onlyShowSelected ? 'Ver todas' : `Ver marcadas (${catalogStore.selectedViewsCount})` }}
+          </button>
+          <span v-if="catalogStore.selectedViewsCount > 0">•</span>
+          <button
+            v-if="catalogStore.selectedViewsCount > 0"
+            type="button"
+            class="btn-link text-danger"
+            @click="clearViewSelection"
+          >
+            ✕ Limpiar
+          </button>
+        </div>
+
+        <!-- Barra de Exportación para Agente IA cuando hay ítems seleccionados -->
+        <div v-if="catalogStore.totalSelectedForAgent > 0" class="agent-selection-box">
+          <div class="agent-box-header">
+            <span>🤖 <strong>Selección para Agente IA:</strong></span>
+            <span class="agent-counts">
+              {{ catalogStore.selectedViewsCount }} Vistas · {{ catalogStore.selectedSpCount }} SPs · {{ catalogStore.selectedFnCount }} FNs
+            </span>
+          </div>
+          <div class="agent-box-actions">
+            <button
+              class="btn btn-sm btn-primary"
+              @click="catalogStore.exportAgentBundleJson()"
+              title="Descargar JSON unificado con SQL, parámetros y reglas de dominio para un Agente IA"
+            >
+              🤖 Descargar JSON Agente
+            </button>
+            <button
+              class="btn btn-sm"
+              @click="catalogStore.copyAgentBundleClipboard()"
+              title="Copiar JSON de contexto al portapapeles para pegar directamente en el chat del Agente IA"
+            >
+              📋 Copiar
+            </button>
+            <button
+              v-if="catalogStore.selectedViewsCount > 0"
+              class="btn btn-sm"
+              @click="catalogStore.exportViewsJson()"
+              title="Descargar únicamente el catálogo JSON de las vistas seleccionadas"
+            >
+              📤 Solo Vistas
+            </button>
+          </div>
+        </div>
+
         <input
           ref="jsonFileInput"
           type="file"
@@ -49,14 +114,26 @@
 
       <div class="item-list">
         <div
-          v-for="v in filteredViews"
+          v-for="v in displayedViews"
           :key="v.name"
           class="catalog-item"
-          :class="{ active: selectedViewName === v.name }"
+          :class="{
+            active: selectedViewName === v.name,
+            checked: catalogStore.selectedViews.includes(v.name)
+          }"
           @click="selectView(v.name)"
         >
           <div class="item-header-row">
-            <div class="item-title">{{ v.name }}</div>
+            <div class="item-title-group">
+              <input
+                type="checkbox"
+                class="item-checkbox"
+                :checked="catalogStore.selectedViews.includes(v.name)"
+                @click.stop="catalogStore.toggleViewSelection(v.name)"
+                title="Seleccionar esta vista para exportar a JSON o proveer a un Agente IA"
+              />
+              <div class="item-title">{{ v.name }}</div>
+            </div>
             <span
               class="mini-badge"
               :class="hasWhereFieldsFor(v.config) ? 'mini-fixed' : 'mini-open'"
@@ -101,6 +178,20 @@
               </p>
             </div>
             <div class="header-btn-group">
+              <button
+                class="btn btn-sm"
+                @click="catalogStore.exportViewsJson([selectedViewName])"
+                title="Descargar definición JSON únicamente de esta vista"
+              >
+                📤 JSON Vista
+              </button>
+              <button
+                class="btn btn-sm"
+                @click="catalogStore.exportAgentBundleJson({ view: selectedViewName })"
+                :title="catalogStore.totalSelectedForAgent > 0 ? `Descargar bundle para Agente IA (${catalogStore.totalSelectedForAgent} seleccionados)` : 'Descargar contexto enriquecido de esta vista para análisis de un Agente IA'"
+              >
+                🤖 {{ catalogStore.totalSelectedForAgent > 0 ? `JSON Agente (${catalogStore.totalSelectedForAgent})` : 'Para Agente IA' }}
+              </button>
               <button class="btn btn-sm" @click="clearFilters" title="Restablecer filtros">
                 🧹 Limpiar
               </button>
@@ -280,6 +371,7 @@ const catalogStore = useCatalogStore()
 
 const searchTerm = ref('')
 const selectedViewName = ref('')
+const onlyShowSelected = ref(false)
 const filterValues = ref({})
 const limit = ref(50)
 const offset = ref(0)
@@ -334,6 +426,21 @@ const filteredViews = computed(() => {
     (v.config?.sql?.fromClause?.join(' ') || '').toLowerCase().includes(t)
   )
 })
+
+const displayedViews = computed(() => {
+  if (!onlyShowSelected.value) return filteredViews.value
+  return filteredViews.value.filter(v => catalogStore.selectedViews.includes(v.name))
+})
+
+function selectFilteredViews() {
+  catalogStore.selectViews(filteredViews.value.map(v => v.name))
+  hostStore.showToast(`Se marcaron ${filteredViews.value.length} vistas`, 'info')
+}
+
+function clearViewSelection() {
+  catalogStore.clearSelectedViews()
+  onlyShowSelected.value = false
+}
 
 const selectedView = computed(() => {
   if (!selectedViewName.value) return null
@@ -619,6 +726,48 @@ async function onJsonFileSelected(e) {
   gap: 4px;
 }
 
+.selection-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.72rem;
+  color: var(--text-muted);
+  flex-wrap: wrap;
+}
+.text-danger {
+  color: #DC2626 !important;
+}
+
+.agent-selection-box {
+  background: linear-gradient(135deg, #F5F3FF 0%, #EDE9FE 100%);
+  border: 1px solid #C4B5FD;
+  border-radius: var(--radius-sm);
+  padding: 8px 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.agent-box-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 0.73rem;
+  color: #4C1D95;
+}
+.agent-counts {
+  font-size: 0.68rem;
+  font-weight: 700;
+  background: #DDD6FE;
+  color: #5B21B6;
+  padding: 1px 6px;
+  border-radius: 9999px;
+}
+.agent-box-actions {
+  display: flex;
+  gap: 4px;
+  flex-wrap: wrap;
+}
+
 .item-list {
   flex: 1;
   overflow-y: auto;
@@ -635,6 +784,9 @@ async function onJsonFileSelected(e) {
 .catalog-item:hover {
   background-color: var(--bg-hover);
 }
+.catalog-item.checked {
+  background-color: rgba(124, 58, 237, 0.05);
+}
 .catalog-item.active {
   background-color: rgba(106, 27, 154, 0.08);
   border-left-color: var(--color-primary);
@@ -644,6 +796,20 @@ async function onJsonFileSelected(e) {
   align-items: center;
   justify-content: space-between;
   gap: 6px;
+}
+.item-title-group {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  min-width: 0;
+  flex: 1;
+}
+.item-checkbox {
+  cursor: pointer;
+  accent-color: var(--color-primary);
+  width: 14px;
+  height: 14px;
+  flex-shrink: 0;
 }
 .item-title {
   font-size: 0.84rem;

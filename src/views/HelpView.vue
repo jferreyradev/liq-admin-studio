@@ -179,14 +179,14 @@
         </div>
       </div>
 
-      <!-- Sección 4: Migración de Vistas y SPs entre Municipios -->
+      <!-- Sección 4: Migración de Vistas y SPs entre Municipios + Exportación para Agente IA -->
       <div v-show="shouldShow('migration')" id="sec-migration" class="card help-section-card highlight-card">
         <div class="section-header">
           <div class="section-title-group">
             <span class="sec-icon">🔄</span>
             <div>
-              <h2 class="card-title">4. Cómo Migrar / Clonar Vistas y SPs entre Municipios (Import / Export JSON)</h2>
-              <p class="text-secondary">Lleva las vistas y el catálogo de Stored Procedures / Funciones desde Desarrollo o Localhost hacia Trancas, Concepción, Tafí Viejo o Burruyacú en segundos.</p>
+              <h2 class="card-title">4. Exportación Selectiva para Agentes IA y Migración entre Municipios</h2>
+              <p class="text-secondary">Selecciona qué Vistas y/o Stored Procedures descargar en un único JSON enriquecido para análisis con IA, o migra catálogos completos entre municipios.</p>
             </div>
           </div>
         </div>
@@ -195,32 +195,32 @@
           <div class="wf-step">
             <span class="wf-num">1</span>
             <div>
-              <strong>Selecciona el servidor origen</strong>
-              <p>En el selector superior <code>🏢 Servidor</code>, elige <strong>Desarrollo</strong> o <strong>Localhost</strong>.</p>
+              <strong>Marca Vistas y/o SPs (Opcional)</strong>
+              <p>Usa los checkboxes laterales en <strong>Vistas</strong> y en <strong>SPs & FNs</strong> para elegir exactamente qué elementos incluir (o usa <code>☑️ Marcar filtradas</code>).</p>
             </div>
           </div>
           <div class="wf-arrow">➔</div>
           <div class="wf-step">
             <span class="wf-num">2</span>
             <div>
-              <strong>Exporta el catálogo a JSON</strong>
-              <p>En <strong>Vistas</strong> o en <strong>Stored Procedures & FNs</strong>, pulsa <strong>📤 Exportar JSON</strong> (o <strong>📦</strong> para el paquete completo de SPs + FNs).</p>
+              <strong>🤖 Para Análisis de Agente IA</strong>
+              <p>En la barra <strong>🤖 Selección para Agente IA</strong> pulsa <strong>🤖 Descargar JSON Agente</strong> o <strong>📋 Copiar</strong>: combina tus Vistas + SPs + Funciones con SQL reconstruido, llamadas PL/SQL y reglas de dominio.</p>
             </div>
           </div>
           <div class="wf-arrow">➔</div>
           <div class="wf-step">
             <span class="wf-num">3</span>
             <div>
-              <strong>Cambia al municipio destino</strong>
-              <p>En <code>🏢 Servidor</code>, selecciona el municipio destino (ej. <strong>Trancas</strong> o <strong>Concepción</strong>).</p>
+              <strong>📤 Exportación de Catálogo</strong>
+              <p>Si pulsas <strong>📤</strong> descarga únicamente los ítems marcados (o todo el catálogo si no marcaste ninguno), 100% compatible con <strong>📁 Importar JSON</strong>.</p>
             </div>
           </div>
           <div class="wf-arrow">➔</div>
           <div class="wf-step">
             <span class="wf-num">4</span>
             <div>
-              <strong>Importa el archivo JSON</strong>
-              <p>Pulsa <strong>📁 Importar JSON</strong> y selecciona el archivo descargado. Quedará registrado y activo en memoria al instante.</p>
+              <strong>📁 Importa en otro Municipio</strong>
+              <p>Cambia de municipio en <code>🏢 Servidor</code> y pulsa <strong>📁 Importar JSON</strong> para registrar las vistas o procedimientos seleccionados al instante.</p>
             </div>
           </div>
         </div>

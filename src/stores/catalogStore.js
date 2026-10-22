@@ -66,6 +66,9 @@ export const useCatalogStore = defineStore('catalog', {
     repo: {},
     entities: {},
     tables: [],
+    selectedViews: [],
+    selectedSp: [],
+    selectedFn: [],
     loadingViews: false,
     loadingProcedures: false,
     loadingTables: false,
@@ -78,10 +81,66 @@ export const useCatalogStore = defineStore('catalog', {
     fnCount: (state) => Object.keys(state.fn || {}).length,
     repoCount: (state) => Object.keys(state.repo || {}).length,
     entitiesCount: (state) => Object.keys(state.entities || {}).length,
-    tablesCount: (state) => (state.tables || []).length
+    tablesCount: (state) => (state.tables || []).length,
+    selectedViewsCount: (state) => (state.selectedViews || []).length,
+    selectedSpCount: (state) => (state.selectedSp || []).length,
+    selectedFnCount: (state) => (state.selectedFn || []).length,
+    totalSelectedForAgent: (state) =>
+      (state.selectedViews || []).length +
+      (state.selectedSp || []).length +
+      (state.selectedFn || []).length
   },
 
   actions: {
+    toggleViewSelection(name) {
+      if (!name) return
+      const idx = this.selectedViews.indexOf(name)
+      if (idx >= 0) {
+        this.selectedViews.splice(idx, 1)
+      } else {
+        this.selectedViews.push(name)
+      }
+    },
+
+    selectViews(names = []) {
+      const set = new Set([...this.selectedViews, ...names])
+      this.selectedViews = Array.from(set)
+    },
+
+    clearSelectedViews() {
+      this.selectedViews = []
+    },
+
+    toggleProcSelection(type = 'sp', name) {
+      if (!name) return
+      const list = type === 'fn' ? this.selectedFn : this.selectedSp
+      const idx = list.indexOf(name)
+      if (idx >= 0) {
+        list.splice(idx, 1)
+      } else {
+        list.push(name)
+      }
+    },
+
+    selectProcs(type = 'sp', names = []) {
+      if (type === 'fn') {
+        this.selectedFn = Array.from(new Set([...this.selectedFn, ...names]))
+      } else {
+        this.selectedSp = Array.from(new Set([...this.selectedSp, ...names]))
+      }
+    },
+
+    clearSelectedProcs(type = 'all') {
+      if (type === 'sp' || type === 'all') this.selectedSp = []
+      if (type === 'fn' || type === 'all') this.selectedFn = []
+    },
+
+    clearAllSelections() {
+      this.selectedViews = []
+      this.selectedSp = []
+      this.selectedFn = []
+    },
+
     async loadAllCatalogs(force = false) {
       const hostStore = useHostStore()
       if (!hostStore.isAuthenticated) return
@@ -148,25 +207,53 @@ export const useCatalogStore = defineStore('catalog', {
       }
     },
 
-    exportViewsJson() {
+    exportViewsJson(onlyNames = null) {
       const hostStore = useHostStore()
       if (!this.views || Object.keys(this.views).length === 0) {
         hostStore.showToast('No hay vistas cargadas en el catálogo para exportar', 'warning')
         return
       }
-      const jsonStr = JSON.stringify(this.views, null, 2)
+
+      const targetNames = Array.isArray(onlyNames)
+        ? onlyNames
+        : (this.selectedViews.length > 0 ? this.selectedViews : null)
+
+      let payload = {}
+      if (targetNames && targetNames.length > 0) {
+        targetNames.forEach(name => {
+          if (this.views[name]) {
+            payload[name] = {
+              ...this.views[name],
+              sqlQuery: buildSqlFromViewConfig(this.views[name])
+            }
+          }
+        })
+      } else {
+        payload = this.views
+      }
+
+      const exportedCount = Object.keys(payload).length
+      if (exportedCount === 0) {
+        hostStore.showToast('No se encontraron vistas válidas en la selección para exportar', 'warning')
+        return
+      }
+
+      const jsonStr = JSON.stringify(payload, null, 2)
       const blob = new Blob([jsonStr], { type: 'application/json' })
       const url = URL.createObjectURL(blob)
       const a = document.createElement('a')
       a.href = url
       const dateStr = new Date().toISOString().slice(0, 10)
       const hostSlug = hostStore.activeHost.id || 'server'
-      a.download = `views_catalog_${hostSlug}_${dateStr}.json`
+      const suffix = targetNames && targetNames.length === 1
+        ? `_${targetNames[0]}`
+        : (targetNames && targetNames.length > 1 ? `_selected_${exportedCount}` : '_catalog')
+      a.download = `views${suffix}_${hostSlug}_${dateStr}.json`
       document.body.appendChild(a)
       a.click()
       document.body.removeChild(a)
       URL.revokeObjectURL(url)
-      hostStore.showToast(`Catálogo de ${this.viewsCount} vistas exportado exitosamente`, 'success')
+      hostStore.showToast(`JSON de ${exportedCount} vista(s) exportado exitosamente`, 'success')
     },
 
     async importViewsJsonFile(file) {
@@ -199,7 +286,7 @@ export const useCatalogStore = defineStore('catalog', {
       }
     },
 
-    exportProceduresJson(type = 'sp') {
+    exportProceduresJson(type = 'sp', onlyNames = null) {
       const hostStore = useHostStore()
       const dateStr = new Date().toISOString().slice(0, 10)
       const hostSlug = hostStore.activeHost.id || 'server'
@@ -208,33 +295,61 @@ export const useCatalogStore = defineStore('catalog', {
       let fileName = ''
       let label = ''
 
+      const filterMap = (sourceMap, namesList) => {
+        if (!namesList || namesList.length === 0) return sourceMap || {}
+        const out = {}
+        namesList.forEach(n => {
+          if (sourceMap && sourceMap[n]) out[n] = sourceMap[n]
+        })
+        return out
+      }
+
       if (type === 'fn') {
-        if (!this.fn || Object.keys(this.fn).length === 0) {
-          hostStore.showToast('No hay funciones cargadas en el catálogo para exportar', 'warning')
+        const targetNames = Array.isArray(onlyNames)
+          ? onlyNames
+          : (this.selectedFn.length > 0 ? this.selectedFn : null)
+        payload = filterMap(this.fn, targetNames)
+        const count = Object.keys(payload).length
+        if (count === 0) {
+          hostStore.showToast('No hay funciones cargadas o seleccionadas para exportar', 'warning')
           return
         }
-        payload = this.fn
-        fileName = `fn_catalog_${hostSlug}_${dateStr}.json`
-        label = `${this.fnCount} funciones`
+        const suffix = targetNames && targetNames.length === 1
+          ? `_${targetNames[0]}`
+          : (targetNames && targetNames.length > 1 ? `_selected_${count}` : '_catalog')
+        fileName = `fn${suffix}_${hostSlug}_${dateStr}.json`
+        label = `${count} función(es)`
       } else if (type === 'all') {
-        if (this.spCount === 0 && this.fnCount === 0) {
-          hostStore.showToast('No hay procedimientos ni funciones cargadas para exportar', 'warning')
+        const spSub = filterMap(this.sp, this.selectedSp.length > 0 ? this.selectedSp : null)
+        const fnSub = filterMap(this.fn, this.selectedFn.length > 0 ? this.selectedFn : null)
+        const spC = Object.keys(spSub).length
+        const fnC = Object.keys(fnSub).length
+        if (spC === 0 && fnC === 0) {
+          hostStore.showToast('No hay procedimientos ni funciones para exportar', 'warning')
           return
         }
         payload = {
-          jsonStoreProcedure: this.sp || {},
-          jsonStoreFunction: this.fn || {}
+          jsonStoreProcedure: spSub,
+          jsonStoreFunction: fnSub
         }
-        fileName = `procedures_catalog_${hostSlug}_${dateStr}.json`
-        label = `${this.spCount} SPs y ${this.fnCount} funciones`
+        const isPartial = this.selectedSp.length > 0 || this.selectedFn.length > 0
+        fileName = `procedures_${isPartial ? `selected_${spC + fnC}` : 'catalog'}_${hostSlug}_${dateStr}.json`
+        label = `${spC} SP(s) y ${fnC} función(es)`
       } else {
-        if (!this.sp || Object.keys(this.sp).length === 0) {
-          hostStore.showToast('No hay Stored Procedures cargados en el catálogo para exportar', 'warning')
+        const targetNames = Array.isArray(onlyNames)
+          ? onlyNames
+          : (this.selectedSp.length > 0 ? this.selectedSp : null)
+        payload = filterMap(this.sp, targetNames)
+        const count = Object.keys(payload).length
+        if (count === 0) {
+          hostStore.showToast('No hay Stored Procedures cargados o seleccionados para exportar', 'warning')
           return
         }
-        payload = this.sp
-        fileName = `sp_catalog_${hostSlug}_${dateStr}.json`
-        label = `${this.spCount} Stored Procedures`
+        const suffix = targetNames && targetNames.length === 1
+          ? `_${targetNames[0]}`
+          : (targetNames && targetNames.length > 1 ? `_selected_${count}` : '_catalog')
+        fileName = `sp${suffix}_${hostSlug}_${dateStr}.json`
+        label = `${count} Stored Procedure(s)`
       }
 
       const jsonStr = JSON.stringify(payload, null, 2)
@@ -247,7 +362,156 @@ export const useCatalogStore = defineStore('catalog', {
       a.click()
       document.body.removeChild(a)
       URL.revokeObjectURL(url)
-      hostStore.showToast(`Catálogo de ${label} descargado exitosamente (${fileName})`, 'success')
+      hostStore.showToast(`JSON de ${label} descargado exitosamente (${fileName})`, 'success')
+    },
+
+    buildAgentAnalysisBundle(fallback = null) {
+      const hostStore = useHostStore()
+      let viewNames = [...this.selectedViews]
+      let spNames = [...this.selectedSp]
+      let fnNames = [...this.selectedFn]
+
+      if (viewNames.length === 0 && spNames.length === 0 && fnNames.length === 0 && fallback) {
+        if (fallback.view && this.views[fallback.view]) viewNames = [fallback.view]
+        if (fallback.sp && this.sp[fallback.sp]) spNames = [fallback.sp]
+        if (fallback.fn && this.fn[fallback.fn]) fnNames = [fallback.fn]
+      }
+
+      const viewsSection = {}
+      viewNames.forEach(name => {
+        const cfg = this.views[name]
+        if (!cfg) return
+        viewsSection[name] = {
+          endpoint: `GET /api/view/${name}`,
+          description: cfg.description || '',
+          sqlQuery: buildSqlFromViewConfig(cfg),
+          whereParameters: Object.keys(cfg.sql?.whereFields || {}),
+          columnsCount: Object.keys(cfg.fields || {}).length,
+          fields: cfg.fields || {},
+          sql: cfg.sql || {}
+        }
+      })
+
+      const formatPlSqlCall = (target, inParams, outParams, isFn = false) => {
+        const args = [
+          ...inParams.map(p => `:${p} /* IN */`),
+          ...(!isFn ? outParams.map(p => `:${p} /* OUT */`) : [])
+        ]
+        if (isFn) {
+          const outVar = outParams[0] || 'value'
+          return `BEGIN :${outVar} := ${target}(${args.join(', ')}); END;`
+        }
+        return `BEGIN ${target}(${args.join(', ')}); END;`
+      }
+
+      const spSection = {}
+      spNames.forEach(name => {
+        const cfg = this.sp[name]
+        if (!cfg) return
+        const inList = Array.isArray(cfg.in_param) ? cfg.in_param : Object.keys(cfg.in_param || {})
+        const outList = Array.isArray(cfg.out_param) ? cfg.out_param : (cfg.out_param?.varName ? [cfg.out_param.varName] : [])
+        const target = cfg.sp_name || name
+        spSection[name] = {
+          endpoint: `POST /api/sp/${name}`,
+          sp_name: target,
+          plsqlCall: formatPlSqlCall(target, inList, outList, false),
+          in_param: inList,
+          out_param: outList
+        }
+      })
+
+      const fnSection = {}
+      fnNames.forEach(name => {
+        const cfg = this.fn[name]
+        if (!cfg) return
+        const inList = Array.isArray(cfg.in_param) ? cfg.in_param : Object.keys(cfg.in_param || {})
+        const outList = Array.isArray(cfg.out_param) ? cfg.out_param : (cfg.out_param?.varName ? [cfg.out_param.varName] : ['value'])
+        const target = cfg.fn_name || name
+        fnSection[name] = {
+          endpoint: `POST /api/fn/${name}`,
+          fn_name: target,
+          plsqlCall: formatPlSqlCall(target, inList, outList, true),
+          in_param: inList,
+          out_param: cfg.out_param || { varName: 'value', Type: 'NUMBER' }
+        }
+      })
+
+      return {
+        _agentContext: {
+          purpose: 'Contexto técnico de Vistas SQL y Procedimientos PL/SQL de node-apiliq (Oracle 11gR2) para análisis por Agente IA',
+          exportedAt: new Date().toISOString(),
+          sourceServer: {
+            id: hostStore.activeHost.id,
+            name: hostStore.activeHost.name,
+            baseUrl: hostStore.baseUrl
+          },
+          domainRules: [
+            'REGLA OBLIGATORIA DE PERÍODO: En toda esta API, cualquier parámetro o filtro de período (Periodo, vPERIODO, PeriodoLiq, PeriodoDDJJ, vPERIODO_HASTA, vPER) utiliza SIEMPRE el día 01 (01/MM/YYYY). Solamente cambian el mes y el año.',
+            'En Vistas (GET /api/view/:name): los filtros de período se envían como 01/MM/YYYY.',
+            'En Stored Procedures (POST /api/sp/:name): los parámetros DATE de período se vinculan en el día 01 del mes a las 00:00:00 hora local.'
+          ],
+          counts: {
+            views: Object.keys(viewsSection).length,
+            storedProcedures: Object.keys(spSection).length,
+            functions: Object.keys(fnSection).length
+          }
+        },
+        views: viewsSection,
+        jsonStoreProcedure: spSection,
+        jsonStoreFunction: fnSection
+      }
+    },
+
+    exportAgentBundleJson(fallback = null) {
+      const hostStore = useHostStore()
+      const bundle = this.buildAgentAnalysisBundle(fallback)
+      const total =
+        bundle._agentContext.counts.views +
+        bundle._agentContext.counts.storedProcedures +
+        bundle._agentContext.counts.functions
+
+      if (total === 0) {
+        hostStore.showToast('Selecciona al menos una Vista o Procedimiento (con los checkboxes) para exportar al Agente IA', 'warning')
+        return
+      }
+
+      const jsonStr = JSON.stringify(bundle, null, 2)
+      const blob = new Blob([jsonStr], { type: 'application/json' })
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url
+      const dateStr = new Date().toISOString().slice(0, 10)
+      const hostSlug = hostStore.activeHost.id || 'server'
+      a.download = `agent_context_${total}_items_${hostSlug}_${dateStr}.json`
+      document.body.appendChild(a)
+      a.click()
+      document.body.removeChild(a)
+      URL.revokeObjectURL(url)
+      hostStore.showToast(
+        `🤖 Bundle para Agente IA descargado (${bundle._agentContext.counts.views} Vistas, ${bundle._agentContext.counts.storedProcedures} SPs, ${bundle._agentContext.counts.functions} FNs)`,
+        'success'
+      )
+    },
+
+    async copyAgentBundleClipboard(fallback = null) {
+      const hostStore = useHostStore()
+      const bundle = this.buildAgentAnalysisBundle(fallback)
+      const total =
+        bundle._agentContext.counts.views +
+        bundle._agentContext.counts.storedProcedures +
+        bundle._agentContext.counts.functions
+
+      if (total === 0) {
+        hostStore.showToast('Selecciona al menos una Vista o Procedimiento para copiar al portapapeles', 'warning')
+        return
+      }
+
+      const jsonStr = JSON.stringify(bundle, null, 2)
+      await navigator.clipboard.writeText(jsonStr)
+      hostStore.showToast(
+        `🤖 Contexto JSON copiado al portapapeles (${bundle._agentContext.counts.views} Vistas, ${bundle._agentContext.counts.storedProcedures} SPs, ${bundle._agentContext.counts.functions} FNs) — Listo para pegar en tu Agente IA`,
+        'success'
+      )
     },
 
     async importProceduresJsonFile(file) {
